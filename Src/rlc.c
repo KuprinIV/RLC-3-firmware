@@ -12,7 +12,7 @@ measureParams mParams = {1,1,0,0x0F,1,0}, mParams_Prev = {1,1,0,0x0F,1,0};
 Stabilization rlcStabilzation = {0, 0, 20};
 CalibrationVals calibrationValues = {{{0, 0},{0, 0},{0, 0},{0, 0}}, {{0, 0},{0, 0},{0, 0},{0, 0}}, 0};
 
-float freqList[4] = {122.0703125f, 976.5625f, 7812.5f, 62500.0f}, rsList[5] = {100.0f, 1000.0f, 10000.f, 100000.0f, 10.0f}, gainList[4] = {2.0f, 5.0f, 13.2f, 34.0f};
+float freqList[4] = {122.0703125f, 976.5625f, 7812.5f, 62500.0f}, rsList[5] = {99.0f, 982.0f, 9852.f, 98425.0f, 9.83f}, gainList[4] = {2.0f, 5.0f, 13.2f, 34.0f};
 
 uint8_t getFrequency(void)
 {

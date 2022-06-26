@@ -233,14 +233,15 @@ void ADC1_IRQHandler(void)
 			{
 				index = 0;
 				
-				rlcData.batADC_data[0] = (float)(batADC_data[0])*3.31f*2.0f/40950.0f;
+				rlcData.batADC_data[0] = (float)(batADC_data[0])*3.256f*2.007f/40960.0f;
 				if(USB_ON())
 				{
-					rlcData.batADC_data[1] = (float)(batADC_data[1])*3.31f/(40.95f*2.686f);
-					rlcData.batADC_data[2] = 87.228f - 20.884f*(float)(batADC_data[2])*3.31f*2.0f/40950.0f;					
+					rlcData.batADC_data[1] = (float)(batADC_data[1])*3.256f/(40.96f*2.642f)-54;
+					if(rlcData.batADC_data[1] < 0) rlcData.batADC_data[1] = 0;
+					rlcData.batADC_data[2] = 87.228f - 20.884f*(float)(batADC_data[2])*3.256f*2.0f/40960.0f;					
 				}
-				battery_percent = (batADC_data[0] > 3.5f) ? ((uint8_t)(10*(rlcData.batADC_data[0] - 3.5f)/0.7f)) : (0);
-				memset(batADC_data,0,sizeof(batADC_data));
+				battery_percent = (batADC_data[0] > 3.4f) ? ((uint8_t)(10*(rlcData.batADC_data[0] - 3.4f)/0.8f)) : (0);
+				batADC_data[0] = batADC_data[1] = batADC_data[2] = 0;
 			}
 	}
 }

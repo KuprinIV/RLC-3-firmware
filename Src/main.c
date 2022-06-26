@@ -440,7 +440,7 @@ int main(void)
 			events.onDisplayRedraw = 0;
 			
 			//power control
-			if(rlcData.batADC_data[0] < 3.5f)
+			if(rlcData.batADC_data[0] < 3.4f)
 			{
 					Clear_Buffer();
 	  			Write_Buffer();
@@ -613,8 +613,14 @@ int main(void)
 				if(pwrCntr++ > 16)
 				{
 					isPoweredOn = 0;
+					// clear display buffer
 					Clear_Buffer();
 					Write_Buffer();
+					// display reset
+					Display_Port->BSRR = RST<<16;
+					// disable display backlight
+					LightDisable();
+					// power off 
 					powerCtrl(0);
 					HAL_PWR_EnterSTANDBYMode();
 					while(1){}
