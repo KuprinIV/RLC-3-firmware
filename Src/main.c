@@ -444,6 +444,10 @@ int main(void)
 			{
 					Clear_Buffer();
 	  			Write_Buffer();
+					// display reset
+					Display_Port->BSRR = RST<<16;
+					// disable display backlight
+					LightDisable();
 					powerCtrl(0);
 					HAL_PWR_EnterSTANDBYMode();
 					while(1){}

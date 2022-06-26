@@ -111,17 +111,15 @@ uint16_t MEM_If_DeInit_FS(void)
 uint16_t MEM_If_Erase_FS(uint32_t Add)
 {
   /* USER CODE BEGIN 2 */ 
-	 uint32_t NbOfPages = 0;
   uint32_t PageError = 0;
   /* Variable contains Flash operation status */
   HAL_StatusTypeDef status;
   FLASH_EraseInitTypeDef eraseinitstruct;
 
    /* Get the number of sector to erase from 1st sector*/
-  NbOfPages = ((USBD_DFU_APP_END_ADD - USBD_DFU_APP_DEFAULT_ADD) / FLASH_PAGE_SIZE) + 1;
   eraseinitstruct.TypeErase = FLASH_TYPEERASE_PAGES;
-  eraseinitstruct.PageAddress = USBD_DFU_APP_DEFAULT_ADD;
-  eraseinitstruct.NbPages = NbOfPages;
+  eraseinitstruct.PageAddress = Add;
+  eraseinitstruct.NbPages = 1;
   status = HAL_FLASHEx_Erase(&eraseinitstruct, &PageError);
 
   if (status != HAL_OK)
