@@ -35,3 +35,5 @@ MDK-ARM/Listings
 *.launch
 *.Bak
 *.iex
+*.uvprojx
+*.dbgconf
