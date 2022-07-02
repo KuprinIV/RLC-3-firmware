@@ -36,7 +36,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_dfu_if.h"
 
-#define FLASH_DESC_STR      "@Internal Flash   /0x08000000/40*01Kg,24*01Ka"
+#define FLASH_DESC_STR      "@Internal Flash   /0x08000000/40*01Kg,24*01Ka,64*01Kg"
 #define FLASH_ERASE_TIME    (uint16_t)50
 #define FLASH_PROGRAM_TIME  (uint16_t)50
 
