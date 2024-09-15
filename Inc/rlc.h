@@ -20,9 +20,9 @@
 typedef struct
 {
 	uint8_t testSignalFreq; // 0 - 120 Hz, 1 - 1 kHz, 2 - 8 kHz, 3 - 62,5 kHz
-	uint8_t R_sense; // 0 - 100 Ohm, 1 - 1 kOhm, 2 - 10 kOhm, 3 - 100 kOhm, 4 - 10 Ohm
+	uint8_t R_sense; // 0 - 10 Ohm, 1 - 100 Ohm, 2 - 1 kOhm, 3 - 10 kOhm, 4 - 100 kOhm
 	uint8_t uGain; // 0 - 1, 1 - 5, 2 - 13.2, 3 - 34
-	uint8_t isParamsUpdated; // 0 - not updated, 0x01 - freq updated, 0x02 - amp updated, 0x04 - R sense updated, 0x08 - uGain updated, 0x10 - send ADC data throw USB 
+	uint8_t isParamsUpdated; // 0 - not updated, 0x01 - freq updated, 0x02 - amp updated, 0x04 - R sense updated, 0x08 - uGain updated, 0x10 - send ADC data through USB 
 	uint8_t isAutoSet; //0 - manual/usb set, 1 - autoset
 	uint8_t measureType; // 0 - autoset, 1 - R, 2 - L, 3 - C
 }measureParams, *pMeasureParams;
@@ -64,7 +64,8 @@ void setRsense(uint8_t);
 void setUGain(uint8_t);
 void setMeasureType(uint8_t);
 static void setRs(float Z);
-void setParameters(float, float, float);
+void setParameters(uint16_t, uint16_t, float);
+void analyzeInputData(uint16_t* data, uint16_t len, uint8_t freq_index, uint16_t* adc_amplitude, ComplexNumber* cn);
 
 void chargerCtrl(uint8_t);
 void enableUSB_PullUp(uint8_t);
@@ -73,8 +74,6 @@ void powerCtrl(uint8_t);
 void startADCRegularConv(void);
 void stopADCRegularConv(void);
 void startADCInjectedConv(void);
-
-void updateMeasureParams(void);
 
 void WriteCalibrationDataToFlash(void);
 void ReadCalibrationDataFromFlash(void);

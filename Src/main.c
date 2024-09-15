@@ -79,7 +79,6 @@ uint16_t ADC_data[NUM_SAMPLES] = {0};
 extern uint8_t battery_percent;
 extern MeasureValue dataType;
 extern float rsList[5];
-extern int16_t sine122[512], sine1k[64], sine8k[8];
 extern CalibrationVals calibrationValues;
 /* USER CODE END PV */
 
@@ -102,14 +101,16 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	int64_t A = 0, B = 0, C = 0, D = 0;
-
 	uint8_t divider = 0, level = 0, isPoweredOn = 0;
 	uint16_t light_cnt = 0;
 	uint8_t but1_old = 0, but2_old = 1, but3_old = 0, rxReport[9] = {0};
-	uint8_t averageCntr = 0, pwrCntr = 0, pwrDisFlag = 0;
-	ComplexNumber VData = {0, 0}, IData = {0, 0}, ZData = {0, 0};
+	uint8_t pwrCntr = 0, pwrDisFlag = 0;
+	int averageCntr = 0;
+	ComplexNumber VData = {0, 0}, IData = {0, 0};
 	ComplexNumber ZData_avr = {0, 0}, VData_avr = {0, 0}, IData_avr = {0, 0};
+	
+	uint16_t volt_adc_ampl = 0;
+	uint16_t curr_adc_ampl = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration----------------------------------------------------------*/
@@ -172,223 +173,34 @@ int main(void)
 			{
 				if(dataType == VoltageData)
 				{
-					switch(getFrequency())
-					{
-						case 0:
-							for(uint16_t i = 0; i < NUM_SAMPLES; i++)
-							{
-								uint16_t j = (i%512);
-								uint16_t k = (i/512)%4;
-								
-								if(k == 0)
-								{
-									A += (int)ADC_data[i]*sine122[j];
-									B += (int)ADC_data[i]*sine122[511-j];
-								}
-								if(k == 1)
-								{
-									A += (int)ADC_data[i]*sine122[511-j];
-									B -= (int)ADC_data[i]*sine122[j];
-								}
-								if(k == 2)
-								{
-									A -= (int)ADC_data[i]*sine122[j];
-									B -= (int)ADC_data[i]*sine122[511-j];
-								}
-								if(k == 3)
-								{
-									A -= (int)ADC_data[i]*sine122[511-j];
-									B += (int)ADC_data[i]*sine122[j];
-								}
-							}
-							break;
-						
-						case 1:
-							for(uint16_t i = 0; i < NUM_SAMPLES; i++)
-							{
-								uint16_t j = (i%64);
-								uint16_t k = (i/64)%4;
-								
-								if(k == 0)
-								{
-									A += (int)ADC_data[i]*sine1k[j];
-									B += (int)ADC_data[i]*sine1k[63-j];
-								}
-								if(k == 1)
-								{
-									A += (int)ADC_data[i]*sine1k[63-j];
-									B -= (int)ADC_data[i]*sine1k[j];
-								}
-								if(k == 2)
-								{
-									A -= (int)ADC_data[i]*sine1k[j];
-									B -= (int)ADC_data[i]*sine1k[63-j];
-								}
-								if(k == 3)
-								{
-									A -= (int)ADC_data[i]*sine1k[63-j];
-									B += (int)ADC_data[i]*sine1k[j];
-								}
-							}
-							break;
-
-						case 2:
-							for(uint16_t i = 0; i < NUM_SAMPLES; i++)
-							{
-								uint16_t j = (i%8);
-								uint16_t k = (i/8)%4;
-								
-								if(k == 0)
-								{
-									A += (int)ADC_data[i]*sine8k[j];
-									B += (int)ADC_data[i]*sine8k[7-j];
-								}
-								if(k == 1)
-								{
-									A += (int)ADC_data[i]*sine8k[7-j];
-									B -= (int)ADC_data[i]*sine8k[j];
-								}
-								if(k == 2)
-								{
-									A -= (int)ADC_data[i]*sine8k[j];
-									B -= (int)ADC_data[i]*sine8k[7-j];
-								}
-								if(k == 3)
-								{
-									A -= (int)ADC_data[i]*sine8k[7-j];
-									B += (int)ADC_data[i]*sine8k[j];
-								}
-							}
-							break;
-
-						case 3:
-							for(uint16_t i = 0; i < NUM_SAMPLES; i+=4)
-							{
-								A += (int)(ADC_data[i+1] - ADC_data[i+3]);
-								B += (int)(ADC_data[i] - ADC_data[i+2]);
-							}
-							break;							
-					}
+					analyzeInputData(ADC_data, NUM_SAMPLES, getFrequency(), &volt_adc_ampl, &VData);
 					memset(ADC_data,0, sizeof(ADC_data));
 				}
 				if(dataType == CurrentData)
 				{
-					switch(getFrequency())
-					{
-						case 0:
-							for(uint16_t i = 0; i < NUM_SAMPLES; i++)
-							{
-								uint16_t j = (i%512);
-								uint16_t k = (i/512)%4;
-								
-								if(k == 0)
-								{
-									C += (int)ADC_data[i]*sine122[j];
-									D += (int)ADC_data[i]*sine122[511-j];
-								}
-								if(k == 1)
-								{
-									C += (int)ADC_data[i]*sine122[511-j];
-									D -= (int)ADC_data[i]*sine122[j];
-								}
-								if(k == 2)
-								{
-									C -= (int)ADC_data[i]*sine122[j];
-									D -= (int)ADC_data[i]*sine122[511-j];
-								}
-								if(k == 3)
-								{
-									C -= (int)ADC_data[i]*sine122[511-j];
-									D += (int)ADC_data[i]*sine122[j];
-								}
-							}
-							break;
-						
-						case 1:
-							for(uint16_t i = 0; i < NUM_SAMPLES; i++)
-							{
-								uint16_t j = (i%64);
-								uint16_t k = (i/64)%4;
-								
-								if(k == 0)
-								{
-									C += (int)ADC_data[i]*sine1k[j];
-									D += (int)ADC_data[i]*sine1k[63-j];
-								}
-								if(k == 1)
-								{
-									C += (int)ADC_data[i]*sine1k[63-j];
-									D -= (int)ADC_data[i]*sine1k[j];
-								}
-								if(k == 2)
-								{
-									C -= (int)ADC_data[i]*sine1k[j];
-									D -= (int)ADC_data[i]*sine1k[63-j];
-								}
-								if(k == 3)
-								{
-									C -= (int)ADC_data[i]*sine1k[63-j];
-									D += (int)ADC_data[i]*sine1k[j];
-								}
-							}
-							break;
-
-						case 2:
-							for(uint16_t i = 0; i < NUM_SAMPLES; i++)
-							{
-								uint16_t j = (i%8);
-								uint16_t k = (i/8)%4;
-								
-								if(k == 0)
-								{
-									C += (int)ADC_data[i]*sine8k[j];
-									D += (int)ADC_data[i]*sine8k[7-j];
-								}
-								if(k == 1)
-								{
-									C += (int)ADC_data[i]*sine8k[7-j];
-									D -= (int)ADC_data[i]*sine8k[j];
-								}
-								if(k == 2)
-								{
-									C -= (int)ADC_data[i]*sine8k[j];
-									D -= (int)ADC_data[i]*sine8k[7-j];
-								}
-								if(k == 3)
-								{
-									C -= (int)ADC_data[i]*sine8k[7-j];
-									D += (int)ADC_data[i]*sine8k[j];
-								}
-							}
-							break;
-
-						case 3:
-							for(uint16_t i = 0; i < NUM_SAMPLES; i+=4)
-							{
-								C += (int)(ADC_data[i+1] - ADC_data[i+3]);
-								D += (int)(ADC_data[i] - ADC_data[i+2]);
-							}
-							break;							
-					}
-					
+					analyzeInputData(ADC_data, NUM_SAMPLES, getFrequency(), &curr_adc_ampl, &IData);
 					memset(ADC_data,0, sizeof(ADC_data));
 					
-					VData.Re = (float)A;
-					VData.Im = (float)B;
-					
-					IData.Re = (float)C/rsList[getRSense()];
-					IData.Im = (float)D/rsList[getRSense()];
-
-					ZData = CplxDiv(VData, IData);
-					
-					VData_avr = CplxSum(VData, VData_avr);
-					IData_avr = CplxSum(IData, IData_avr);
-					ZData_avr = CplxSum(ZData, ZData_avr);
-					
-					A = 0;
-					B = 0;
-					C = 0;
-					D = 0;
+					// check overscale of ADC input
+					if((volt_adc_ampl < 64000) && (curr_adc_ampl < 64000)) // no overscale
+					{				
+						// calculate test component current
+						IData.Re = IData.Re/rsList[getRSense()];
+						IData.Im = IData.Im/rsList[getRSense()];
+						
+						// add calculated values to average
+						VData_avr = CplxSum(VData, VData_avr);
+						IData_avr = CplxSum(IData, IData_avr);			
+					}
+					else // overscale of any value is detected
+					{
+						// if overscale, adjust measure parameters
+						float fi = atanf(VData.Im/VData.Re) - atanf(IData.Im/IData.Re);
+						setParameters(volt_adc_ampl, curr_adc_ampl, fi);
+						
+						// reject this average
+						averageCntr -= 2;
+					}
 				}
 				averageCntr++;
 			}
@@ -402,8 +214,7 @@ int main(void)
 				IData_avr.Re /= 8;
 				IData_avr.Im /= 8;
 				
-				ZData_avr.Re /= 8;
-				ZData_avr.Im /= 8;
+				ZData_avr = CplxDiv(VData_avr, IData_avr);
 				
 				if(calibrationValues.isCalibrated == 1)
 				{
@@ -414,14 +225,14 @@ int main(void)
 					ZData_avr = CplxMul(nom, calibrationValues.Zo[getFrequency()]);
 				}
 				
-				setParameters(ZData_avr.Re, ZData_avr.Im, CplxMag(ZData_avr));
-				
 				rlcData.R = ZData_avr.Re;
 				rlcData.X = ZData_avr.Im;
 				rlcData.Z = CplxMag(ZData_avr);
-				rlcData.Ur = (float)CplxMag(IData_avr)/NUM_SAMPLES*3.0735e-9f*rsList[getRSense()];
-				rlcData.Ux = (float)CplxMag(VData_avr)/NUM_SAMPLES*3.0735e-9f;
-				rlcData.fi = atanf(ZData_avr.Im/ZData_avr.Re)*180.0f/M_PI;
+				rlcData.Ur = (float)curr_adc_ampl*3.3f/65536;
+				rlcData.Ux = (float)volt_adc_ampl*3.3f/65536;
+				rlcData.fi = atanf(ZData_avr.Im/ZData_avr.Re);
+				
+				setParameters(volt_adc_ampl, curr_adc_ampl, rlcData.fi);
 			
 				VData_avr.Re = 0;
 				VData_avr.Im = 0;
@@ -430,9 +241,7 @@ int main(void)
 				IData_avr.Im = 0;
 				
 				ZData_avr.Re = 0;
-				ZData_avr.Im = 0;
-				
-				updateMeasureParams();
+				ZData_avr.Im = 0;	
 			}
 		}
 		if(events.onDisplayRedraw)

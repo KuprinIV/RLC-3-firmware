@@ -293,7 +293,7 @@ int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Action value
 	
 	sprintf(Ur_str, "Ur = %0.3fÂ", data->Ur);
 	sprintf(Ux_str, "Ux = %0.3fÂ", data->Ux);
-	sprintf(fi_str, "fi = %0.2f°", data->fi);
+	sprintf(fi_str, "fi = %0.2f°", data->fi*180.0f/M_PI);
 	
 	String str1 = {0,9,AlignCenter,font6x8,(const char*)r_str,NotInverted};
 	String str2 = {0,18,AlignCenter,font6x8,(const char*)Ur_str,NotInverted};
