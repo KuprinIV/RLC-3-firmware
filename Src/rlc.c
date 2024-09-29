@@ -9,16 +9,22 @@ extern FontInfo font6x8;
 extern Data rlcData;
 extern int16_t sine122[512], sine1k[64], sine8k[8];
 
-static void changeMeasureParams(int8_t isRsenseChanged, int8_t isTestFreqChanged, int8_t isUGainChanged);
+static uint8_t changeRsense(int8_t isRsenseChanged);
+static uint8_t changeTestFreq(int8_t isTestFreqChanged);
+static uint8_t changeUGain(int8_t isUGainChanged);
 static uint8_t isRatioOptimal(float ratio);
 static void updateMeasureParams(void);
 
 measureParams mParams = {1,1,0,0x0F,1,0}, mParams_Prev = {1,1,0,0x0F,1,0};
 Stabilization rlcStabilzation = {0, 0, 20};
 CalibrationVals calibrationValues = {{{0, 0},{0, 0},{0, 0},{0, 0}}, {{0, 0},{0, 0},{0, 0},{0, 0}}, 0};
-static float ratio_prev = 1.0f;
 
-float freqList[4] = {122.0703125f, 976.5625f, 7812.5f, 62500.0f}, rsList[5] = {9.83f, 99.0f, 982.0f, 9852.f, 98425.0f}, gainList[4] = {2.0f, 5.0f, 13.2f, 34.0f};
+float freqList[4] = {122.0703125f, 976.5625f, 7812.5f, 62500.0f}, rsList[5] = {9.96f, 99.5f, 998.0f, 9980.0f, 99926.0f}, gainList[4] = {2.0f, 5.0f, 13.2f, 34.0f};
+
+void initRLC(void)
+{
+	updateMeasureParams();
+}
 
 uint8_t getFrequency(void)
 {
@@ -85,77 +91,112 @@ void setParameters(uint16_t volt_adc, uint16_t curr_adc, float fi)
 	float add_gain = 1.0f;
 	float current_gain = gainList[mParams.uGain];
 	float ratio = (float)volt_adc/curr_adc;
-	static uint8_t prevMeasureType;
+	
+	static uint8_t restart_update_cntr;
+	static uint8_t is_update_flag;
 	
 	if(isVoltOverscale || isCurrOverscale)
 	{
-		changeMeasureParams(0, 0, -1); // decrease gain if both channels are overscaled
+		changeUGain(-1); // decrease gain if both channels are overscaled
 	}
 	else
 	{
 		if(mParams.isAutoSet)
 		{
-			// if is autoset and measured element is resistor (phase shift is within ±1°(0.017 rad)), switch measure type to R
-			if(fi >= -0.017f && fi <= 0.017f && mParams.measureType == 0 && rlcStabilzation.isStable)
+			if(mParams.measureType == 1)
 			{
-				prevMeasureType = getMeasureType();
-				setMeasureType(1);
 				setFrequency(1); // set freq 1kHz
 			}
-			else
+			// if is autoset and measured element is resistor (phase shift is within ±28.8°(0.5 rad)), switch measure type to R
+			if(fi >= -0.5f && fi <= 0.5f && rlcStabilzation.isStable)
 			{
-				setMeasureType(prevMeasureType);
+				setMeasureType(1);
+				//setFrequency(1); // set freq 1kHz
 			}
 		}
 		// try to optimize measure parameters
-		if(!isRatioOptimal(ratio)) // if ratio is unstable, try to optimize it
+		if(!isRatioOptimal(ratio)/* || is_update_flag*/) // if ratio is unstable, try to optimize it
 		{
+			is_update_flag = 0;
+			
 			// update R sense and test signal frequency
 			if(ratio > 3.162f && ratio < 10.0f) // voltage is bigger, increase R sense
 			{
-				changeMeasureParams(1, 0, 0);
+				if(changeRsense(1) == 0) // if Rsense is limited, try to change test signal frequency
+				{
+					if(fi >= 0.0f)
+					{
+						changeTestFreq(-1);
+					}
+					else
+					{
+						changeTestFreq(1);
+					}
+				}
 			}
 			else if(ratio >= 10.0f && fi >= 0.0f) // if test component is inductor and voltage is bigger, increase R sense and decrease test signal frequency
 			{
-				changeMeasureParams(1, -1, 0);
+				changeRsense(1);
+				changeTestFreq(-1);
 			}
 			else if(ratio >= 10.0f && fi < 0.0f) // if test component is capacitor and voltage is bigger, increase R sense and increase test signal frequency
 			{
-				changeMeasureParams(1, 1, 0);
+				changeRsense(1);
+				changeTestFreq(1);
 			}	
 			else if(ratio <= 0.3162f && ratio > 0.1f) // current is bigger, decrease R sense
 			{
-				changeMeasureParams(-1, 0, 0);
+				if(changeRsense(-1) == 0) // if Rsense is limited, try to change test signal frequency
+				{
+					if(fi >= 0.0f)
+					{
+						changeTestFreq(1);
+					}
+					else
+					{
+						changeTestFreq(-1);
+					}
+				}
 			}	
 			else if(ratio <= 0.1f && fi >= 0.0f) // if test component is inductor and current is bigger, decrease R sense and increase test signal frequency
 			{
-				changeMeasureParams(-1, 1, 0);
+				changeRsense(-1);
+				changeTestFreq(1);
 			}
 			else if(ratio <= 0.1f && fi < 0.0f) // if test component is capacitor and current is bigger, decrease R sense and decrease test signal frequency
 			{
-				changeMeasureParams(-1, -1, 0);
+				changeRsense(-1);
+				changeTestFreq(-1);
 			}	
-			
-			// update amplifier gain
-			add_gain = (float)60000/MAX(volt_adc, curr_adc);
-			required_gain = add_gain*current_gain;
-			
-			if(required_gain < 4.99f)
-			{
-				setUGain(0);
-			}
-			else if(required_gain < 13.19f)
-			{
-				setUGain(1);
-			}
-			else if(required_gain < 33.99f)
-			{
-				setUGain(2);
-			}
-			else
-			{
-				setUGain(3);
-			}
+		}
+//		else
+//		{
+//			if(restart_update_cntr++ >= 5)
+//			{
+//				is_update_flag = 1;
+//				restart_update_cntr = 0;
+//			}
+//		}
+		
+		// update amplifier gain
+		add_gain = (float)60000/MAX(volt_adc, curr_adc);
+		required_gain = add_gain*current_gain;
+		
+		if(required_gain < 4.99f)
+		{
+			setUGain(0);
+		}
+		else if(required_gain < 13.19f)
+		{
+			setUGain(1);
+		}
+		else if(required_gain < 33.99f)
+		{
+			setUGain(2);
+		}
+		else
+		{
+			setUGain(3);
 		}
 	}
 	// update measure parameters
@@ -223,8 +264,8 @@ void analyzeInputData(uint16_t* data, uint16_t len, uint8_t freq_index, uint16_t
 	// set output complex number value
 	if(cn != NULL)
 	{
-		cn->Re = (float)real_part;
-		cn->Im = (float)image_part;
+		cn->Re = (float)(real_part/NUM_SAMPLES);
+		cn->Im = (float)(image_part/NUM_SAMPLES);
 	}
 }
 
@@ -238,6 +279,7 @@ void updateMeasureParams()
 		if(mParams.isParamsUpdated & 0x01)
 		{
 			setDDSFrequency(mParams.testSignalFreq);
+			mParams_Prev.testSignalFreq = mParams.testSignalFreq;
 		}
 				
 		// set R sense
@@ -254,13 +296,15 @@ void updateMeasureParams()
 				GPIOC->ODR &= 0x9FFF;
 				GPIOC->ODR |= (((mParams.R_sense-1)&0x03)<<13); 
 			}
+			mParams_Prev.R_sense = mParams.R_sense;
 		}
 		
 		// set uGain
 		if(mParams.isParamsUpdated & 0x08)
 		{
 				GPIOB->ODR &= 0xF3FF;
-				GPIOB->ODR |= ((mParams.uGain&0x03)<<10);			
+				GPIOB->ODR |= ((mParams.uGain&0x03)<<10);
+				mParams_Prev.uGain = mParams.uGain;
 		}
 		
 		mParams.isParamsUpdated = 0; //reset flag
@@ -278,7 +322,6 @@ void updateMeasureParams()
 		}
 	}
 		
-	mParams_Prev = mParams;
 	return;
 }
 
@@ -436,12 +479,9 @@ void LightDisable()
 	TIM4->CCER &= ~TIM_CCER_CC2E;
 }
 
-static void changeMeasureParams(int8_t isRsenseChanged, int8_t isTestFreqChanged, int8_t isUGainChanged)
+static uint8_t changeRsense(int8_t isRsenseChanged)
 {
 	uint8_t r_sense = mParams.R_sense;
-	uint8_t test_freq = mParams.testSignalFreq;
-	uint8_t u_gain = mParams.uGain;
-	
 	if(isRsenseChanged != 0)
 	{
 		r_sense += isRsenseChanged;
@@ -449,15 +489,22 @@ static void changeMeasureParams(int8_t isRsenseChanged, int8_t isTestFreqChanged
 		if(r_sense > 127)
 		{
 			r_sense = 0;
+			isRsenseChanged = 0;
 		}
 		else if(r_sense > 4)
 		{
 			r_sense = 4;
+			isRsenseChanged = 0;
 		}
 		// update value
 		setRsense(r_sense);
 	}
-	
+	return (uint8_t)isRsenseChanged;
+}
+
+static uint8_t changeTestFreq(int8_t isTestFreqChanged)
+{
+	uint8_t test_freq = mParams.testSignalFreq;
 	if(isTestFreqChanged != 0 && mParams.isAutoSet && mParams.measureType != 1)
 	{
 		test_freq += isTestFreqChanged;
@@ -465,15 +512,26 @@ static void changeMeasureParams(int8_t isRsenseChanged, int8_t isTestFreqChanged
 		if(test_freq > 127)
 		{
 			test_freq = 0;
+			isTestFreqChanged = 0;
 		}
 		else if(test_freq > 3)
 		{
 			test_freq = 3;
+			isTestFreqChanged = 0;
 		}
 		// update value
 		setFrequency(test_freq);
 	}
-	
+	else
+	{
+		isTestFreqChanged = 0;
+	}
+	return (uint8_t)isTestFreqChanged;
+}
+
+static uint8_t changeUGain(int8_t isUGainChanged)
+{
+	uint8_t u_gain = mParams.uGain;
 	if(isUGainChanged != 0)
 	{
 		u_gain += isUGainChanged;
@@ -481,14 +539,17 @@ static void changeMeasureParams(int8_t isRsenseChanged, int8_t isTestFreqChanged
 		if(u_gain > 127)
 		{
 			u_gain = 0;
+			isUGainChanged = 0;
 		}
 		else if(u_gain > 3)
 		{
 			u_gain = 3;
+			isUGainChanged = 0;
 		}
 		// update value
 		setUGain(u_gain);
 	}
+	return (uint8_t)isUGainChanged;
 }
 
 static uint8_t isRatioOptimal(float ratio)
@@ -499,14 +560,15 @@ static uint8_t isRatioOptimal(float ratio)
 	
 	// define nearest to 1 ratio or 1/ratio
 	if(ratio >= 1.0f) ratio_less_1 = 1/ratio;
-
+	
+	if((ratio_less_1 > ratio_max/3.162f) && (ratio_less_1 < 3.162f*ratio_max))
+	{
+		res = 1;
+	}
+	
 	if(ratio_less_1 > ratio_max)
 	{
 		ratio_max = ratio_less_1;
-	}
-	else if((ratio_less_1 > ratio_max/3.162f) && (ratio_less_1 < 3.162f*ratio_max))
-	{
-		res = 1;
 	}
 
 	return res;

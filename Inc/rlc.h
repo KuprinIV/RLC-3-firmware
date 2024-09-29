@@ -58,6 +58,7 @@ uint8_t getRSense(void);
 uint8_t getUGain(void);
 uint8_t getMeasureType(void);
 
+void initRLC(void);
 void setAutoSetParams(uint8_t);
 void setFrequency(uint8_t);
 void setRsense(uint8_t);

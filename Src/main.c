@@ -153,6 +153,7 @@ int main(void)
 	Timers_Init();	
 	ADC_Init();
 	
+	initRLC();
 	ReadCalibrationDataFromFlash();
 	ReadDisplaySettings();
 
