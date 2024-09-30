@@ -107,7 +107,7 @@ void setParameters(uint16_t volt_adc, uint16_t curr_adc, float fi)
 			{
 				setFrequency(1); // set freq 1kHz
 			}
-			// if is autoset and measured element is resistor (phase shift is within ±28.8°(0.5 rad)), switch measure type to R
+			// if is autoset and measured element is resistor (phase shift is within Â±28.8Â°(0.5 rad)), switch measure type to R
 			if(fi >= -0.5f && fi <= 0.5f && rlcStabilzation.isStable)
 			{
 				setMeasureType(1);
@@ -250,8 +250,11 @@ void analyzeInputData(uint16_t* data, uint16_t len, uint8_t freq_index, uint16_t
 		}
 		else
 		{
+			if((i%4) == 0)
+			{
 				real_part += (int)(data[i+1] - data[i+3]);
 				image_part += (int)(data[i] - data[i+2]);
+			}
 		}
 	}
 	
@@ -264,8 +267,8 @@ void analyzeInputData(uint16_t* data, uint16_t len, uint8_t freq_index, uint16_t
 	// set output complex number value
 	if(cn != NULL)
 	{
-		cn->Re = (float)(real_part/NUM_SAMPLES);
-		cn->Im = (float)(image_part/NUM_SAMPLES);
+		cn->Re = (float)(real_part);
+		cn->Im = (float)(image_part);
 	}
 }
 
