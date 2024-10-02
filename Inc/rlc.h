@@ -24,7 +24,7 @@ typedef struct
 	uint8_t uGain; // 0 - 1, 1 - 5, 2 - 13.2, 3 - 34
 	uint8_t isParamsUpdated; // 0 - not updated, 0x01 - freq updated, 0x02 - amp updated, 0x04 - R sense updated, 0x08 - uGain updated, 0x10 - send ADC data through USB 
 	uint8_t isAutoSet; //0 - manual/usb set, 1 - autoset
-	uint8_t measureType; // 0 - autoset, 1 - R, 2 - L, 3 - C
+	uint8_t measureType; // 0 - autoset, 1 - R, 2 - L, 3 - C, 4 - resettable R
 }measureParams, *pMeasureParams;
 
 typedef enum

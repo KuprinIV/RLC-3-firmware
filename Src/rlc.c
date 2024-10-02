@@ -9,10 +9,10 @@ extern FontInfo font6x8;
 extern Data rlcData;
 extern int16_t sine122[512], sine1k[64], sine8k[8];
 
-static uint8_t changeRsense(int8_t isRsenseChanged);
-static uint8_t changeTestFreq(int8_t isTestFreqChanged);
 static uint8_t changeUGain(int8_t isUGainChanged);
-static uint8_t isRatioOptimal(float ratio);
+static uint8_t getOptimalRatioIndexL(float ratio);
+static uint8_t getOptimalRatioIndexC(float ratio);
+static uint8_t getOptimalR(float ratio);
 static void updateMeasureParams(void);
 
 measureParams mParams = {1,1,0,0x0F,1,0}, mParams_Prev = {1,1,0,0x0F,1,0};
@@ -90,93 +90,59 @@ void setParameters(uint16_t volt_adc, uint16_t curr_adc, float fi)
 	float required_gain = 1.0f;
 	float add_gain = 1.0f;
 	float current_gain = gainList[mParams.uGain];
-	float ratio = (float)volt_adc/curr_adc;
-	
-	static uint8_t restart_update_cntr;
-	static uint8_t is_update_flag;
+	float ratio = 0;
+	float fi_gap = 0.1f;
+	uint8_t optimal_ratio_index = 0;
 	
 	if(isVoltOverscale || isCurrOverscale)
 	{
-		changeUGain(-1); // decrease gain if both channels are overscaled
+		changeUGain(-1); // decrease amplifier gain if any channels is overscaled
 	}
 	else
 	{
-		if(mParams.isAutoSet)
-		{
-			if(mParams.measureType == 1)
+		if(mParams.isAutoSet && mParams.measureType != 1) // if autoset and not resistor measure mode, adjust test signal frequency and R sense
+		{	
+			if(fi > fi_gap || mParams.measureType == 2) // component is inductor by phase or inductor measure mode is selected in settings
 			{
-				setFrequency(1); // set freq 1kHz
-			}
-			// if is autoset and measured element is resistor (phase shift is within ±28.8°(0.5 rad)), switch measure type to R
-			if(fi >= -0.5f && fi <= 0.5f && rlcStabilzation.isStable)
-			{
-				setMeasureType(1);
-				//setFrequency(1); // set freq 1kHz
-			}
-		}
-		// try to optimize measure parameters
-		if(!isRatioOptimal(ratio)/* || is_update_flag*/) // if ratio is unstable, try to optimize it
-		{
-			is_update_flag = 0;
-			
-			// update R sense and test signal frequency
-			if(ratio > 3.162f && ratio < 10.0f) // voltage is bigger, increase R sense
-			{
-				if(changeRsense(1) == 0) // if Rsense is limited, try to change test signal frequency
+				ratio = (float)volt_adc/curr_adc*rsList[mParams.R_sense]/freqList[mParams.testSignalFreq];
+				optimal_ratio_index = getOptimalRatioIndexL(ratio);
+				// get measure parameters from optimal ratio index
+				setRsense(optimal_ratio_index % 5);
+				setFrequency(optimal_ratio_index/5);
+				if(mParams.measureType == 4)
 				{
-					if(fi >= 0.0f)
-					{
-						changeTestFreq(-1);
-					}
-					else
-					{
-						changeTestFreq(1);
-					}
+					setMeasureType(mParams_Prev.measureType);
 				}
 			}
-			else if(ratio >= 10.0f && fi >= 0.0f) // if test component is inductor and voltage is bigger, increase R sense and decrease test signal frequency
+			else if(fi < -fi_gap || mParams.measureType == 3) // component is capacitor by phase or capacitor measure mode is selected in settings
 			{
-				changeRsense(1);
-				changeTestFreq(-1);
-			}
-			else if(ratio >= 10.0f && fi < 0.0f) // if test component is capacitor and voltage is bigger, increase R sense and increase test signal frequency
-			{
-				changeRsense(1);
-				changeTestFreq(1);
-			}	
-			else if(ratio <= 0.3162f && ratio > 0.1f) // current is bigger, decrease R sense
-			{
-				if(changeRsense(-1) == 0) // if Rsense is limited, try to change test signal frequency
+				ratio = (float)curr_adc/(volt_adc*rsList[mParams.R_sense]*freqList[mParams.testSignalFreq]);
+				optimal_ratio_index = getOptimalRatioIndexC(ratio);
+				// get measure parameters from optimal ratio index
+				setRsense(optimal_ratio_index % 5);
+				setFrequency(optimal_ratio_index/5);
+				if(mParams.measureType == 4)
 				{
-					if(fi >= 0.0f)
-					{
-						changeTestFreq(1);
-					}
-					else
-					{
-						changeTestFreq(-1);
-					}
+					setMeasureType(mParams_Prev.measureType);
 				}
-			}	
-			else if(ratio <= 0.1f && fi >= 0.0f) // if test component is inductor and current is bigger, decrease R sense and increase test signal frequency
-			{
-				changeRsense(-1);
-				changeTestFreq(1);
 			}
-			else if(ratio <= 0.1f && fi < 0.0f) // if test component is capacitor and current is bigger, decrease R sense and decrease test signal frequency
+			else // component is resisitor
 			{
-				changeRsense(-1);
-				changeTestFreq(-1);
-			}	
+				ratio = (float)volt_adc/curr_adc*rsList[mParams.R_sense];
+				setRsense(getOptimalR(ratio));
+				setFrequency(1); // set 1 kHz test signal frequency
+				if(rlcStabilzation.isStable)
+				{
+					mParams_Prev.measureType = mParams.measureType;
+					setMeasureType(4); // if measure parameters are stable, set resettable resistor measure mode 
+				}
+			}
 		}
-//		else
-//		{
-//			if(restart_update_cntr++ >= 5)
-//			{
-//				is_update_flag = 1;
-//				restart_update_cntr = 0;
-//			}
-//		}
+		else // if not autoset, adjust only R sense
+		{
+			ratio = (float)volt_adc/curr_adc*rsList[mParams.R_sense];
+			setRsense(getOptimalR(ratio));
+		}
 		
 		// update amplifier gain
 		add_gain = (float)60000/MAX(volt_adc, curr_adc);
@@ -482,56 +448,6 @@ void LightDisable()
 	TIM4->CCER &= ~TIM_CCER_CC2E;
 }
 
-static uint8_t changeRsense(int8_t isRsenseChanged)
-{
-	uint8_t r_sense = mParams.R_sense;
-	if(isRsenseChanged != 0)
-	{
-		r_sense += isRsenseChanged;
-		// check limits
-		if(r_sense > 127)
-		{
-			r_sense = 0;
-			isRsenseChanged = 0;
-		}
-		else if(r_sense > 4)
-		{
-			r_sense = 4;
-			isRsenseChanged = 0;
-		}
-		// update value
-		setRsense(r_sense);
-	}
-	return (uint8_t)isRsenseChanged;
-}
-
-static uint8_t changeTestFreq(int8_t isTestFreqChanged)
-{
-	uint8_t test_freq = mParams.testSignalFreq;
-	if(isTestFreqChanged != 0 && mParams.isAutoSet && mParams.measureType != 1)
-	{
-		test_freq += isTestFreqChanged;
-		// check limits
-		if(test_freq > 127)
-		{
-			test_freq = 0;
-			isTestFreqChanged = 0;
-		}
-		else if(test_freq > 3)
-		{
-			test_freq = 3;
-			isTestFreqChanged = 0;
-		}
-		// update value
-		setFrequency(test_freq);
-	}
-	else
-	{
-		isTestFreqChanged = 0;
-	}
-	return (uint8_t)isTestFreqChanged;
-}
-
 static uint8_t changeUGain(int8_t isUGainChanged)
 {
 	uint8_t u_gain = mParams.uGain;
@@ -555,24 +471,114 @@ static uint8_t changeUGain(int8_t isUGainChanged)
 	return (uint8_t)isUGainChanged;
 }
 
-static uint8_t isRatioOptimal(float ratio)
+static uint8_t getOptimalRatioIndexL(float ratio)
 {
-	static float ratio_max;
-	float ratio_less_1 = ratio;
-	uint8_t res = 0;
+	float L_ratios[20] = {0.08192f, 0.8192f, 8.192f, 81.92f, 819.2f,
+						0.01024f, 0.1024f, 1.024f, 10.24f, 102.4f,
+						0.00128f, 0.0128f, 0.128f, 1.28f, 12.8f,
+						0.00016f, 0.0016f, 0.016f, 0.16f, 1.6};
+						
+	float ratio_max = 0.0f;
+	float div = 0.0f;
+	uint8_t opt_index = 0;
 	
-	// define nearest to 1 ratio or 1/ratio
-	if(ratio >= 1.0f) ratio_less_1 = 1/ratio;
-	
-	if((ratio_less_1 > ratio_max/3.162f) && (ratio_less_1 < 3.162f*ratio_max))
+	if(ratio < 0.00016f)
 	{
-		res = 1;
+		opt_index = 15; // set minimum ratio index
 	}
-	
-	if(ratio_less_1 > ratio_max)
+	else if(ratio > 819.2f)
 	{
-		ratio_max = ratio_less_1;
+		opt_index = 4; // set maximum ratio index
 	}
+	else // search nearest ratio in range
+	{
+		for(uint8_t i = 0; i < 20; i++)
+		{
+			div = ratio/L_ratios[i];
+			if(div > 1.0f)
+			{
+				div = 1/div;
+			}
+			// define nearest element index to the input ratio
+			if(div > ratio_max)
+			{
+				ratio_max = div;
+				opt_index = i;
+			}
+		}
+	}
+	return opt_index;
+}
 
-	return res;
+static uint8_t getOptimalRatioIndexC(float ratio)
+{
+	float C_ratios[20] = {0.0008192f, 8.192e-5f, 8.192e-6f, 8.192e-7f, 8.192e-8f,
+						  0.0001024f, 1.024e-5f, 1.024e-6f, 1.024e-7f, 1.024e-8f,
+						  1.28e-5f, 1.28e-6f, 1.28e-7f, 1.28e-8f,  1.28e-9f,
+						  1.6e-6f, 1.6e-7f, 1.6e-8f, 1.6e-9f, 1.6e-10f};
+						
+	float ratio_max = 0.0f;
+	float div = 0.0f;
+	uint8_t opt_index = 0;
+	
+	if(ratio < 1.6e-10f)
+	{
+		opt_index = 19; // set minimum ratio index
+	}
+	else if(ratio > 0.0008192f)
+	{
+		opt_index = 0; // set maximum ratio index
+	}
+	else // search nearest ratio in range
+	{
+		for(uint8_t i = 0; i < 20; i++)
+		{
+			div = ratio/C_ratios[i];
+			if(div > 1.0f)
+			{
+				div = 1/div;
+			}
+			// define nearest element index to the input ratio
+			if(div > ratio_max)
+			{
+				ratio_max = div;
+				opt_index = i;
+			}
+		}
+	}
+	return opt_index;
+}
+
+static uint8_t getOptimalR(float ratio)
+{
+	float ratio_max = 0.0f;
+	float div = 0.0f;
+	uint8_t opt_index = 0;
+	
+	if(ratio < 10.0f)
+	{
+		opt_index = 0; // set minimum ratio index
+	}
+	else if(ratio > 100000.0f)
+	{
+		opt_index = 4; // set maximum ratio index
+	}
+	else // search nearest ratio in range
+	{
+		for(uint8_t i = 0; i < 5; i++)
+		{
+			div = ratio/rsList[i];
+			if(div > 1.0f)
+			{
+				div = 1/div;
+			}
+			// define nearest element index to the input ratio
+			if(div > ratio_max)
+			{
+				ratio_max = div;
+				opt_index = i;
+			}
+		}
+	}
+	return opt_index;
 }

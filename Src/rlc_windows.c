@@ -28,7 +28,7 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
 		const char* Rsp[2] = {"Rs","Rp"};
 		const char* Lsp[2] = {"Ls","Lp"};
 		const char* Csp[2] = {"Cs","Cp"};
-		const char* measureTypesStr[4] = {"", "R", "L", "C"};
+		const char* measureTypesStr[5] = {"", "R", "L", "C", "R"};
 		
     float C = 0, L = 0, R = 0, D = 0, Q = 0;
 		//current measure parameters string
@@ -232,7 +232,7 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
 		}
 		else
 		{
-			if(getMeasureType() == 1)
+			if(getMeasureType() == 1 || getMeasureType() == 4)
 			{
 				String str2 = {0,19,AlignCenter,font6x8,(const char*)r_str,NotInverted};
 				wnd->strings[1] = str2;
