@@ -217,7 +217,7 @@ int main(void)
 				
 				ZData_avr = CplxDiv(VData_avr, IData_avr);
 				
-				if(calibrationValues.isCalibrated == 1)
+				if(calibrationValues.isCalibrated == 1 && !rlcData.is_calibration_started)
 				{
 					ComplexNumber nom, denom;
 					nom = CplxDif(ZData_avr, calibrationValues.Zc[getFrequency()]);

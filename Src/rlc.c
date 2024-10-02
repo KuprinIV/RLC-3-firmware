@@ -111,7 +111,7 @@ void setParameters(uint16_t volt_adc, uint16_t curr_adc, float fi)
 				setFrequency(optimal_ratio_index/5);
 				if(mParams.measureType == 4)
 				{
-					setMeasureType(mParams_Prev.measureType);
+					setMeasureType(0);
 				}
 			}
 			else if(fi < -fi_gap || mParams.measureType == 3) // component is capacitor by phase or capacitor measure mode is selected in settings
@@ -123,7 +123,7 @@ void setParameters(uint16_t volt_adc, uint16_t curr_adc, float fi)
 				setFrequency(optimal_ratio_index/5);
 				if(mParams.measureType == 4)
 				{
-					setMeasureType(mParams_Prev.measureType);
+					setMeasureType(0);
 				}
 			}
 			else // component is resisitor
@@ -131,9 +131,8 @@ void setParameters(uint16_t volt_adc, uint16_t curr_adc, float fi)
 				ratio = (float)volt_adc/curr_adc*rsList[mParams.R_sense];
 				setRsense(getOptimalR(ratio));
 				setFrequency(1); // set 1 kHz test signal frequency
-				if(rlcStabilzation.isStable)
+				if(rlcStabilzation.isStable && mParams.measureType == 0)
 				{
-					mParams_Prev.measureType = mParams.measureType;
 					setMeasureType(4); // if measure parameters are stable, set resettable resistor measure mode 
 				}
 			}

@@ -51,6 +51,7 @@ typedef struct
 		float fi;
 	  uint8_t current_item;
 		uint8_t rsrp;
+		uint8_t is_calibration_started;
 }Data,*pData;
 
 typedef struct Window

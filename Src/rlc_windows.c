@@ -20,7 +20,7 @@ pWindow CurrentWnd;
 Window MenuWnd;
 Window SetupWnds[6];
 	
-Data rlcData = {&mParams,{50,10,4},{4.2f,250.0f,25.0f},0,0,0,0,0,0,0,0};
+Data rlcData = {&mParams,{50,10,4},{4.2f,250.0f,25.0f},0,0,0,0,0,0,0,0,0};
 
 int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_action)
 {
@@ -769,6 +769,7 @@ int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action
 			 freqIndex = 0;
 			 isChecked = 0;
 			 calibrationType = 0;
+			 data->is_calibration_started = 0;
 			 if(isEnded)
 			 {
 					WriteCalibrationDataToFlash();//write calibration data to flash
@@ -795,6 +796,7 @@ int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action
 					
 				setAutoSetParams(0); //disable autoset params
 				setMeasureType(0);
+				data->is_calibration_started = 1;
 				isFirst++;
 				return 1;
 			}
