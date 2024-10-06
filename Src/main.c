@@ -108,6 +108,7 @@ int main(void)
 	int averageCntr = 0;
 	ComplexNumber VData = {0, 0}, IData = {0, 0};
 	ComplexNumber ZData_avr = {0, 0}, VData_avr = {0, 0}, IData_avr = {0, 0};
+	float fi_avr = 0, Zmag_avr = 0;
 	
 	uint16_t volt_adc_ampl = 0;
 	uint16_t curr_adc_ampl = 0;
@@ -183,7 +184,7 @@ int main(void)
 					memset(ADC_data,0, sizeof(ADC_data));
 					
 					// check overscale of ADC input
-					if((volt_adc_ampl < 64000) && (curr_adc_ampl < 64000)) // no overscale
+					if((volt_adc_ampl < ADC_OVERSCALE) && (curr_adc_ampl < ADC_OVERSCALE)) // no overscale
 					{				
 						// calculate test component current
 						IData.Re = IData.Re/rsList[getRSense()];
@@ -197,6 +198,14 @@ int main(void)
 					{
 						// if overscale, adjust measure parameters
 						float fi = atanf(VData.Im/VData.Re) - atanf(IData.Im/IData.Re);
+						if(fi > M_PI/2)
+						{
+							fi -= M_PI;
+						}
+						else if(fi < - M_PI/2)
+						{
+							fi += M_PI;
+						}
 						setParameters(volt_adc_ampl, curr_adc_ampl, fi);
 						
 						// reject this average
@@ -226,12 +235,18 @@ int main(void)
 					ZData_avr = CplxMul(nom, calibrationValues.Zo[getFrequency()]);
 				}
 				
+				Zmag_avr = CplxMag(ZData_avr);
+				fi_avr = atanf(ZData_avr.Im/ZData_avr.Re);
+				
+				ZData_avr.Re = Zmag_avr*cosf(fi_avr);
+				ZData_avr.Im = Zmag_avr*sinf(fi_avr);
+				
 				rlcData.R = ZData_avr.Re;
 				rlcData.X = ZData_avr.Im;
-				rlcData.Z = CplxMag(ZData_avr);
+				rlcData.Z = Zmag_avr;//CplxMag(ZData_avr);
 				rlcData.Ur = (float)curr_adc_ampl*3.3f/65536;
 				rlcData.Ux = (float)volt_adc_ampl*3.3f/65536;
-				rlcData.fi = atanf(ZData_avr.Im/ZData_avr.Re);
+				rlcData.fi = fi_avr;//atanf(ZData_avr.Im/ZData_avr.Re);
 				
 				setParameters(volt_adc_ampl, curr_adc_ampl, rlcData.fi);
 			

@@ -44,7 +44,7 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
 		if((data->param_vals->measureType == 3) || ((data->param_vals->measureType == 0)&&(data->X < 0)))
 		{
 			C = fabs(data->X);
-			D = fabs(data->R)/C;
+			D = data->R/C;
 			C = 1/(2*M_PI*freqList[getFrequency()]*C);
 			
 			if(data->rsrp == 1)
@@ -110,7 +110,7 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
 		if((data->param_vals->measureType == 2) || ((data->param_vals->measureType == 0)&&(data->X >= 0)))
 		{
 			L = fabs(data->X);
-			D = fabs(data->R)/L;
+			D = data->R/L;
 			L = L/(2*M_PI*freqList[getFrequency()]);
 			Q = 1/D;
 			
@@ -167,7 +167,7 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
 			}
 		}
 		// resistance string
-		R = fabs(data->R);
+		R = data->R;
 		if(data->rsrp == 1)
 		{
 			R *= (1+D*D)/(D*D);
@@ -774,7 +774,15 @@ int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action
 			 {
 					WriteCalibrationDataToFlash();//write calibration data to flash
 			 }
-			 memset(&tempCalVals, 0, sizeof(tempCalVals));
+			 // reset temporary impedance data containers
+			 for(int idx = 0; idx < 4; idx++)
+			 {
+				 tempCalVals.Zc[idx].Re = 0.0f;
+				 tempCalVals.Zc[idx].Im = 0.0f;
+					
+				 tempCalVals.Zo[idx].Re = 0.0f;
+				 tempCalVals.Zo[idx].Im = 0.0f;
+			 }
 			 setAutoSetParams(1); //enable autoset params
        return 0;
     }
@@ -798,6 +806,16 @@ int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action
 				setMeasureType(0);
 				data->is_calibration_started = 1;
 				isFirst++;
+				
+				// init temporary impedance data containers
+				for(int idx = 0; idx < 4; idx++)
+				{
+					tempCalVals.Zc[idx].Re = 0.0f;
+					tempCalVals.Zc[idx].Im = 0.0f;
+					
+					tempCalVals.Zo[idx].Re = 0.0f;
+					tempCalVals.Zo[idx].Im = 0.0f;
+				}
 				return 1;
 			}
 			
@@ -848,7 +866,7 @@ int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action
 							wnd->strings[2] = str3;
 							wnd->StringsQuantity = 3;
 							
-							tempCalVals.Zo[freqIndex].Re += fabs(data->R);
+							tempCalVals.Zo[freqIndex].Re += data->R;
 							tempCalVals.Zo[freqIndex].Im += data->X;
 							dataIndex++;
 						}
@@ -922,7 +940,7 @@ int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action
 							wnd->strings[2] = str3;
 							wnd->StringsQuantity = 3;
 							
-							tempCalVals.Zc[freqIndex].Re += fabs(data->R);
+							tempCalVals.Zc[freqIndex].Re += data->R;
 							tempCalVals.Zc[freqIndex].Im += data->X;
 							dataIndex++;
 						}

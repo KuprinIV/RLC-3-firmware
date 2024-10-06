@@ -10,6 +10,7 @@ extern Data rlcData;
 extern int16_t sine122[512], sine1k[64], sine8k[8];
 
 static uint8_t changeUGain(int8_t isUGainChanged);
+static uint8_t changeRsense(int8_t is_changed);
 static uint8_t getOptimalRatioIndexL(float ratio);
 static uint8_t getOptimalRatioIndexC(float ratio);
 static uint8_t getOptimalR(float ratio);
@@ -19,7 +20,7 @@ measureParams mParams = {1,1,0,0x0F,1,0}, mParams_Prev = {1,1,0,0x0F,1,0};
 Stabilization rlcStabilzation = {0, 0, 20};
 CalibrationVals calibrationValues = {{{0, 0},{0, 0},{0, 0},{0, 0}}, {{0, 0},{0, 0},{0, 0},{0, 0}}, 0};
 
-float freqList[4] = {122.0703125f, 976.5625f, 7812.5f, 62500.0f}, rsList[5] = {9.96f, 99.5f, 998.0f, 9980.0f, 99926.0f}, gainList[4] = {2.0f, 5.0f, 13.2f, 34.0f};
+float freqList[4] = {122.0703125f, 976.5625f, 7812.5f, 62500.0f}, rsList[5] = {10.19f, 99.5f, 998.0f, 9980.0f, 99926.0f}, gainList[4] = {2.0f, 5.0f, 13.2f, 34.0f};
 
 void initRLC(void)
 {
@@ -85,8 +86,8 @@ void setMeasureType(uint8_t lcmd)
 
 void setParameters(uint16_t volt_adc, uint16_t curr_adc, float fi)
 {
-	uint8_t isVoltOverscale = (volt_adc > 64000);
-	uint8_t isCurrOverscale = (curr_adc > 64000);
+	uint8_t isVoltOverscale = (volt_adc > ADC_OVERSCALE);
+	uint8_t isCurrOverscale = (curr_adc > ADC_OVERSCALE);
 	float required_gain = 1.0f;
 	float add_gain = 1.0f;
 	float current_gain = gainList[mParams.uGain];
@@ -96,11 +97,16 @@ void setParameters(uint16_t volt_adc, uint16_t curr_adc, float fi)
 	
 	if(isVoltOverscale || isCurrOverscale)
 	{
-		changeUGain(-1); // decrease amplifier gain if any channels is overscaled
+		// decrease amplifier gain if any channels is overscaled
+		if(changeUGain(-1) == 0)
+		{
+//			setRsense(0);
+			changeRsense(-1);
+		}
 	}
 	else
 	{
-		if(mParams.isAutoSet && mParams.measureType != 1) // if autoset and not resistor measure mode, adjust test signal frequency and R sense
+		if(mParams.isAutoSet && (mParams.measureType != 1)) // if autoset and not resistor measure mode, adjust test signal frequency and R sense
 		{	
 			if(fi > fi_gap || mParams.measureType == 2) // component is inductor by phase or inductor measure mode is selected in settings
 			{
@@ -141,10 +147,18 @@ void setParameters(uint16_t volt_adc, uint16_t curr_adc, float fi)
 		{
 			ratio = (float)volt_adc/curr_adc*rsList[mParams.R_sense];
 			setRsense(getOptimalR(ratio));
+			if(mParams.measureType == 1)
+			{
+				setFrequency(1); // set 1 kHz test signal frequency
+			}
 		}
 		
 		// update amplifier gain
-		add_gain = (float)60000/MAX(volt_adc, curr_adc);
+		add_gain = (float)ADC_MAX_AMPLITUDE/MAX(volt_adc, curr_adc);
+		if(add_gain > 0.95f && add_gain < 1.05f)
+		{
+			add_gain = 1.0f;
+		}
 		required_gain = add_gain*current_gain;
 		
 		if(required_gain < 4.99f)
@@ -468,6 +482,29 @@ static uint8_t changeUGain(int8_t isUGainChanged)
 		setUGain(u_gain);
 	}
 	return (uint8_t)isUGainChanged;
+}
+
+static uint8_t changeRsense(int8_t is_changed)
+{
+	uint8_t rs = mParams.R_sense;
+	if(is_changed != 0)
+	{
+		rs += is_changed;
+		// check limits
+		if(rs > 127)
+		{
+			rs = 0;
+			is_changed = 0;
+		}
+		else if(rs > 4)
+		{
+			rs = 4;
+			is_changed = 0;
+		}
+		// update value
+		setRsense(rs);
+	}
+	return (uint8_t)is_changed;
 }
 
 static uint8_t getOptimalRatioIndexL(float ratio)
