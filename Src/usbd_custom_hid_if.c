@@ -206,23 +206,23 @@ static int8_t CUSTOM_HID_OutEvent_FS  (uint8_t event_idx, uint8_t state)
 	switch((receivedCmd&0xF0)>>4)
 	{
 		case 1:
-			setFrequency(receivedCmd&0x0F);
+			RLC_SetFrequency(receivedCmd&0x0F);
 			break;
 		
 		case 3:
-			setRsense(receivedCmd&0x0F);
+			RLC_SetRsense(receivedCmd&0x0F);
 			break;
 		
 		case 4:
-			setUGain(receivedCmd&0x0F);
+			RLC_SetUGain(receivedCmd&0x0F);
 			break;
 		
 		case 5:
-			setMeasureType(receivedCmd&0x0F);
+			RLC_SetMeasureType(receivedCmd&0x0F);
 			break;
 		
 		case 7:
-			setAutoSetParams(receivedCmd&0x0F);
+			RLC_SetAutoSetParams(receivedCmd&0x0F);
 			break;
 	}	
   return (0);

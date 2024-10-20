@@ -7,12 +7,12 @@
 #define MCLK 8000000.0f
 
 void DDS_Init(void);
-void signalOn(uint8_t state);
-void setSignalType(uint8_t index);
-void setDDSFrequency(int freq);
-void setPhase(int phase);
+void DDS_SignalOn(uint8_t state);
+void DDS_SetSignalType(uint8_t index);
+void DDS_SetFrequency(int freq);
+void DDS_SetPhase(int phase);
 
-static void reset(uint8_t state);
-static void writeRegister(uint16_t reg);
+static void DDS_Reset(uint8_t state);
+static void DDS_WriteRegister(uint16_t reg);
 
 #endif

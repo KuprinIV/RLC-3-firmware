@@ -4,17 +4,21 @@
 #include "nokia_5110_lib.h"
 #include "rlc.h"
 
-int SetupModeWindow(pWindow wnd, pData data,Action item_action, Action value_action);
-int SetupParametersWindow(pWindow wnd, pData data, Action item_action, Action value_action);
-int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action action);
-int SetBatteryStateWindow(pWindow wnd, pData data, Action item_action, Action action);
-
-int SetMenuWindow(pWindow wnd, pData data, Action item_action, Action action);
-int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action);
+void WindowsInit(void);
+void goToNextWindowOrItem(void);
+void goToPrevWindowOrItem(void);
+void confirmWindowOrItem(void);
+void refreshWindow(void);
 
 int DisplayMainWindow(pWindow wnd, pData data,Action item_action, Action value_action);
 int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Action value_action);
+int SetMenuWindow(pWindow wnd, pData data, Action item_action, Action action);
+
+int SetupModeWindow(pWindow wnd, pData data,Action item_action, Action value_action);
+int SetupParametersWindow(pWindow wnd, pData data, Action item_action, Action value_action);
+int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action);
+int SetBatteryStateWindow(pWindow wnd, pData data, Action item_action, Action action);
+int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action action);
 int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Action value_action);
 
-void WindowsInit(void);
 #endif

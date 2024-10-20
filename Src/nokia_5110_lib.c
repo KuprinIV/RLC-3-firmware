@@ -1,93 +1,119 @@
 #include "nokia_5110_lib.h"
 #include "stm32f1xx.h"
+#include "rlc_device.h"
 #include <math.h>
 #include <string.h>
 
 #define ABS(x) (x) >= 0 ? (x):(-x)
 
-static unsigned char DisplayBuffer[84*6] = {0};
-uint8_t character = 0;
+static uint8_t DisplayBuffer[DISPLAY_WIDTH*DISPLAY_HEIGHT/8] = {0};
 extern FontInfo font6x8;
 
-void Write_Cmd(uint8_t cmd)
+/**
+  * @brief  Write command to display
+	* @param  cmd - command byte
+  * @retval None
+  */
+static void Write_Cmd(uint8_t cmd)
 {
 	GPIOB->BRR = DC;
-	//GPIOA->BRR = CE;
-		while(!(SPI1->SR & SPI_SR_TXE));
-		SPI1->DR = cmd;
-		while(!(SPI1->SR & SPI_SR_TXE));
-		while(SPI1->SR & SPI_SR_BSY);
-	//GPIOA->BSRR = CE;
+
+	while(!(SPI1->SR & SPI_SR_TXE));
+	SPI1->DR = cmd;
+	while(!(SPI1->SR & SPI_SR_TXE));
+	while(SPI1->SR & SPI_SR_BSY);
 }
 
-void Write_Data(uint8_t data)
+/**
+  * @brief  Write data to display
+	* @param  data - data byte
+  * @retval None
+  */
+static void Write_Data(uint8_t data)
 {
 	GPIOB->BSRR = DC;
-	//GPIOA->BRR = CE;
-		while(!(SPI1->SR & SPI_SR_TXE));
-		SPI1->DR = data;
-		while(!(SPI1->SR & SPI_SR_TXE));
-		while(SPI1->SR & SPI_SR_BSY);
-	//GPIOA->BSRR = CE;
+
+	while(!(SPI1->SR & SPI_SR_TXE));
+	SPI1->DR = data;
+	while(!(SPI1->SR & SPI_SR_TXE));
+	while(SPI1->SR & SPI_SR_BSY);
 }
 
-void Display_Init(void)
-{
-	RCC->APB2ENR |= RCC_APB2ENR_IOPAEN|RCC_APB2ENR_IOPBEN;
-	RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
-	 
-	/* SPI SCK, MOSI and DC, RST, CS0 GPIO pin configuration  */
-	AFIO->MAPR |= AFIO_MAPR_SPI1_REMAP;
-	
-	GPIOA->CRH &= 0x0FFFFFFF;
-	GPIOA->CRH |= 0x20000000;
-
-	GPIOB->CRL &= 0xF0000FFF;
-	GPIOB->CRL |= 0x02B2B000;
-	
-	GPIOA->BSRR = CE;
-	
-	//SPI init 
-	SPI1->CR1 |= SPI_CR1_BR_2|SPI_CR1_BR_1; // fpclk/4
-	SPI1->CR1 |= SPI_CR1_BIDIMODE|SPI_CR1_BIDIOE|SPI_CR1_SSM; // 8-bit
-	SPI1->CR1 |= SPI_CR1_SSI;
-	SPI1->CR1 |= SPI_CR1_MSTR; // spi master 
-	SPI1->CR1 |= SPI_CR1_SPE;
-	
-	Display_Port->BSRR = RST<<16;
-	HAL_Delay(5);
-	Display_Port->BSRR = RST;
-
-	GPIOA->BRR = CE;
-	Write_Cmd(0x21);//??????????? ????? ??????
-	Write_Cmd(0xB8);//?????????? ????????
-	Write_Cmd(0x04); //????? ????????????? ????????? 
-	Write_Cmd(0x14); //???????? 1:24
-	Write_Cmd(0x20); //??????? ????? ??????
-	Write_Cmd(0x0C); //?????????? ???????????
-	GPIOA->BSRR = CE;
-}
-
-void SetPos(uint8_t x, uint8_t y)
+/**
+  * @brief  Set start position to display data write
+	* @param  x - x-coordinate
+	* @param  y - y-coordinate
+  * @retval None
+  */
+static void SetPos(uint8_t x, uint8_t y)
 {
   Write_Cmd(0x40 | (y & 7));
   Write_Cmd(0x80 | x);
 }
 
-void Write_Pixel(uint8_t x,uint8_t y, uint8_t state)
+/**
+  * @brief  Write bitmap data to framebuffer
+  * @param  bmp - bitmap data array
+  * @param  x - x-coordinate of top-left corner
+  * @param  y - y-coordinate of top-left corner
+  * @param  width - bitmap width in pixels
+  * @param  height - bitmap height in pixels
+  * @retval none
+  */
+static void Display_DrawBitmap(uint8_t* bmp, uint8_t x, uint8_t y, uint8_t width, uint8_t height)
 {
-	SetPos(x,y/8);
-	Write_Data(state<<y%8);
+	uint8_t bytes_in_col = ((height%8) == 0)?(height>>3):((height>>3) + 1);
+
+	if(x + width > DISPLAY_WIDTH - 1) x = DISPLAY_WIDTH - 1 - width;
+	if(y + height > DISPLAY_HEIGHT - 1) y = DISPLAY_HEIGHT - 1 - height;
+
+	for(uint8_t i = 0; i < width; i++)
+	{
+		for(uint8_t j = 0; j < bytes_in_col; j++)
+		{
+			for(uint8_t k = 0; k < 8; k++)
+			{
+			if((bmp[j*width+i]>>k) & 0x01)
+				DrawPixel(x+i, y+j*8+k);
+			}
+		}
+	}
 }
-/* ??????? ?????, ????????????? ?????? ? ????? ??????? ???? */
+
+/**
+  * @brief  Display init
+	* @param  None
+  * @retval None
+  */
+void Display_Init(void)
+{	
+	Display_Port->BSRR = RST<<16;
+	HAL_Delay(5);
+	Display_Port->BSRR = RST;
+
+	GPIOA->BRR = CE;
+	Write_Cmd(0x21); // extended command set
+	Write_Cmd(0xB8); // LCD voltage offset
+	Write_Cmd(0x04); // temperature correction 0
+	Write_Cmd(0x14); // contrast offset 1:24
+	Write_Cmd(0x20); // common command set
+	Write_Cmd(0x0C); // normal mode
+	GPIOA->BSRR = CE;
+}
+
+/**
+  * @brief  Display clear
+	* @param  None
+  * @retval None
+  */
 void Display_Clear(void) 
 {
-	uint8_t x=0,y=0;
+	uint8_t x=0, y=0;
 	GPIOA->BRR = CE;
   SetPos(0, 0);
-  for (y = 0; y < 6; y++) 
+  for (y = 0; y < DISPLAY_HEIGHT/8; y++) 
 	{
-    for (x = 0; x < 84; x++) 
+    for (x = 0; x < DISPLAY_WIDTH; x++) 
 		{
       Write_Data(0);
     }    
@@ -96,55 +122,93 @@ void Display_Clear(void)
 	GPIOA->BSRR = CE;
 }
 
-void SetStringInBuffer(String* string)
+/**
+  * @brief  Write framebuffer to display controller
+	* @param  None
+  * @retval None
+  */
+void Display_Write_Buffer()
 {
-   uint8_t x = string->x_pos, y = string->y_pos, x_inv = 0;
-    const char* pStr = string->Text;
-    uint64_t temp = 0;
-    int Length = strlen(string->Text),LengthInv = Length, widthInPixels = 0;
-    //calculate width of text in pixels
-    const char* lStr = string->Text;
-    while(LengthInv-- > 0)
-    {
-       widthInPixels += string->font.descriptor[*(lStr)-' '].width + 1;
-       lStr++;
-    }
-
-    if(string->align == AlignLeft) x = x;
-    if(string->align == AlignCenter) x = 42 - widthInPixels/2;
-    if(string->align == AlignRight) x = 83 - widthInPixels;
-    x_inv = x;
-
-    while(Length-- > 0)
-    {
-        uint8_t i,j;
-        uint8_t currentCharWidth = string->font.descriptor[*(pStr)-' '].width;
-
-        for(i = 0; i < currentCharWidth;i++)
-        {
-            uint8_t j_lim = (string->font.Height%8 == 0)?(string->font.Height/8):(string->font.Height/8+1);
-            for(j = 0; j < j_lim; j++)
-            {
-                temp |= ((uint8_t)(string->font.pFont[(string->font.descriptor[*(pStr)-' '].offset+j*currentCharWidth) + i])<<(8*j+1));
-            }
-            temp <<= y%8;
-
-            for(j = 0; j <= j_lim; j++)
-            {
-                DisplayBuffer[84*(y/8+j)+x+i] |= (uint8_t)((temp>>8*j)&0x000000FF);
-            }
-            temp = 0;
-        }
-        x += currentCharWidth+1;
-        pStr++;
-    }
-
-    if(string->inverted == Inverted)
-    {
-        InvertRegion(x_inv-1, y, x_inv+widthInPixels + 1, y+string->font.Height+1);
-    }
+	GPIOA->BRR = CE;
+  SetPos(0,0);
+  for(uint8_t y = 0;y < DISPLAY_HEIGHT/8;y++)
+	{
+	  for(uint8_t x = 0;x < DISPLAY_WIDTH;x++)
+	  {
+	    	Write_Data(*(DisplayBuffer+x+DISPLAY_WIDTH*y));
+	  }
+	}
+	GPIOA->BSRR = CE;
 }
 
+/**
+  * @brief  Clear framebuffer
+	* @param  None
+  * @retval None
+  */
+void Display_Clear_Buffer()
+{
+	memset(DisplayBuffer,0,sizeof(DisplayBuffer));
+}	
+
+/**
+  * @brief  Set display contrast
+	* @param  contrast - contrast value from 0 to 7
+  * @retval None
+  */
+void Display_SetContrast(uint8_t contrast)
+{
+	GPIOA->BRR = CE;
+	Write_Cmd(0x21);
+	Write_Cmd(0x10+contrast);
+	Write_Cmd(0x20);
+	Write_Cmd(0x0C);
+	GPIOA->BSRR = CE;
+}
+
+/**
+  * @brief  Put string into framebuffer
+	* @param  string - string data object pointer
+  * @retval None
+  */
+void SetStringInBuffer(String* string)
+{
+	uint8_t x = string->x_pos, y = string->y_pos, x_inv = 0;
+	const char* pStr = string->Text;
+	int Length = strlen(string->Text),LengthInv = Length, widthInPixels = 0;
+	uint8_t currentCharWidth = 0;
+	//calculate width of text in pixels
+	const char* lStr = string->Text;
+	while(LengthInv-- > 0)
+	{
+		 widthInPixels += string->font.descriptor[*(lStr)-' '].width + 1;
+		 lStr++;
+	}
+
+	if(string->align == AlignLeft) x = x;
+	if(string->align == AlignCenter) x = (DISPLAY_WIDTH - widthInPixels)/2;
+	if(string->align == AlignRight) x = DISPLAY_WIDTH - 1 - widthInPixels;
+	x_inv = x;
+
+	while(Length-- > 0)
+	{
+		currentCharWidth = string->font.descriptor[*(pStr)-' '].width;
+		Display_DrawBitmap((uint8_t*)(string->font.pFont+string->font.descriptor[*(pStr)-' '].offset), x, y+1, currentCharWidth, string->font.Height);
+		x += currentCharWidth+1;
+		pStr++;
+	}
+
+	if(string->inverted == Inverted)
+	{
+			InvertRegion(x_inv-1, y, x_inv+widthInPixels + 1, y+string->font.Height+1);
+	}
+}
+
+/**
+  * @brief  Put window strings into framebuffer
+	* @param  wnd - window data object pointer
+  * @retval None
+  */
 void SetWindow(pWindow wnd)
 {
     for(int i = 0; i < wnd->StringsQuantity; i++)
@@ -153,6 +217,14 @@ void SetWindow(pWindow wnd)
     }
 }
 
+/**
+  * @brief  Invert display region into framebuffer
+	* @param  xn - start x-coordinate of region
+	* @param  yn - start y-coordinate of region
+	* @param  xk - stop x-coordinate of region
+	* @param  yk - stop y-coordinate of region
+  * @retval None
+  */
 void InvertRegion(uint8_t xn, uint8_t yn, uint8_t xk, uint8_t yk)
 {
 	uint8_t mask = 0;
@@ -175,58 +247,64 @@ void InvertRegion(uint8_t xn, uint8_t yn, uint8_t xk, uint8_t yk)
 			  	mask = 0xFF;
 			  }
 		 }
-			DisplayBuffer[84*j + i] ^= mask;
+			DisplayBuffer[DISPLAY_WIDTH*j + i] ^= mask;
 		}
 	}
 }
 
-void Clear_Buffer()
-{
-	memset(DisplayBuffer,0,sizeof(DisplayBuffer));
-}	
-
-void Write_Buffer()
-{
-	GPIOA->BRR = CE;
-  SetPos(0,0);
-  for(uint8_t y = 0;y < 6;y++)
-	  for(uint8_t x = 0;x < 84;x++)
-	  {
-	    	Write_Data(*(DisplayBuffer+x+84*y));
-	  }
-	GPIOA->BSRR = CE;
-//	for(uint16_t i = 0;i < sizeof(DisplayBuffer);i+=2)
-//	{
-//		Write_Data(*((volatile uint16_t*)(DisplayBuffer+i)));
-//	}
-}
-
+/**
+  * @brief  Put battery indicator image into framebuffer
+	* @param  percentage - battery charge state from 0 (empty) to 10 (full)
+  * @retval None 
+  */
 void PaintBatteryIndicator(uint8_t percentage)
 {
-	  uint8_t BatteryBorder[12] = {0x3C,0x66,0x42,0x42,0x42,0x42,0x42,0x42,0x42,0x42,0x42,0x7E};
-		for(uint8_t i = 68; i < 80;i++)
+	uint8_t BatteryBorder[12] = {0x3C,0x66,0x42,0x42,0x42,0x42,0x42,0x42,0x42,0x42,0x42,0x7E};
+	// fill indicator by percentage
+	for(uint8_t i = 0; i < percentage; i++)
+	{
+		if(i < 9)
 		{
-			if(i < 79 - percentage)
-		    DisplayBuffer[i] |= BatteryBorder[i-68];
-			else
-				DisplayBuffer[i] |= (BatteryBorder[i-68]|0x3C);
-	  }		
+			BatteryBorder[10-i] |= 0x3C;
+		}
+		else
+		{
+			BatteryBorder[10-i] |= 0x18;
+		}
+	}		
+	Display_DrawBitmap(BatteryBorder, 68, 0, 12, 6);
 }
 
+/**
+  * @brief  Put USB indicator image into framebuffer
+	* @param  None
+  * @retval None 
+  */
 void PaintUSBIndicator()
 {
 	uint8_t USBIndicator[15] = {0x08,0x08,0x08,0x1C,0x3E,0x3E,0x3E,0x3E,0x3E,0x3E,0x14,0x14,0x14,0x14,0x1C};
-		for(uint8_t i = 3; i < 18;i++)
-		{
-		    DisplayBuffer[i] |= USBIndicator[i-3];
-	  }	
+	Display_DrawBitmap(USBIndicator, 3, 0, 15, 6);
 }
 
+/**
+  * @brief  Put pixel data into framebuffer
+	* @param  x - x-coordinate of pixel
+	* @param  y - y-coordinate of pixel
+  * @retval None 
+  */
 void DrawPixel(uint8_t x, uint8_t y)
 {
-    DisplayBuffer[84*(y>>3)+x] |= 1<<(y%8);
+    DisplayBuffer[DISPLAY_WIDTH*(y>>3)+x] |= 1<<(y%8);
 }
 
+/**
+  * @brief  Put line data into framebuffer
+	* @param  xn - start x-coordinate of line
+	* @param  yn - start y-coordinate of line
+	* @param  xk - stop x-coordinate of line
+	* @param  yk - stop y-coordinate of line
+  * @retval None 
+  */
 void DrawLine(int8_t xn, int8_t yn, int8_t xk, int8_t yk)
 {
   int8_t deltax = 0, deltay = 0, x = 0, y = 0, xinc1 = 0, xinc2 = 0,
@@ -294,6 +372,13 @@ void DrawLine(int8_t xn, int8_t yn, int8_t xk, int8_t yk)
   }
 }
 
+/**
+  * @brief  Put circle data into framebuffer
+	* @param  x - x-coordinate of circle center
+	* @param  y - y-coordinate of circle center
+	* @param  R - circle radius in pixels
+  * @retval None 
+  */
 void DrawCircle(uint8_t x, uint8_t y, uint8_t R)
 {
      int8_t  decision;       /* Decision Variable */
@@ -328,6 +413,14 @@ void DrawCircle(uint8_t x, uint8_t y, uint8_t R)
      }
 }
 
+/**
+  * @brief  Put ellipse data into framebuffer
+	* @param  x_pos - x-coordinate of ellipse center
+	* @param  y_pos - y-coordinate of ellipse center
+	* @param  rad_x - ellipse radius in pixels by x
+	* @param  rad_y - ellipse radius in pixels by y
+  * @retval None 
+  */
 void DrawEllipse(uint8_t x_pos, uint8_t y_pos, uint8_t rad_x, uint8_t rad_y)
 {
     char x = 0, y = -rad_x, err = 2-2*rad_y, e2;
@@ -355,7 +448,15 @@ void DrawEllipse(uint8_t x_pos, uint8_t y_pos, uint8_t rad_x, uint8_t rad_y)
     while (y <= 0);
 }
 
-void DrawRect(uint8_t x_pos, uint8_t y_pos,uint8_t width, uint8_t height)
+/**
+  * @brief  Put rectangular data into framebuffer
+	* @param  x_pos - start x-coordinate of rectangular
+	* @param  y_pos - start y-coordinate of rectangular
+	* @param  width - rectangular width in pixels
+	* @param  height - rectangular height in pixels
+  * @retval None 
+  */
+void DrawRect(uint8_t x_pos, uint8_t y_pos, uint8_t width, uint8_t height)
 {
     DrawLine(x_pos,y_pos,x_pos+width,y_pos);
     DrawLine(x_pos+width,y_pos,x_pos+width,y_pos+height);
@@ -363,7 +464,15 @@ void DrawRect(uint8_t x_pos, uint8_t y_pos,uint8_t width, uint8_t height)
     DrawLine(x_pos,y_pos+height,x_pos,y_pos);
 }
 
-void FillRect(uint8_t x_pos, uint8_t y_pos,uint8_t width, uint8_t height)
+/**
+  * @brief  Put filled rectangular data into framebuffer
+	* @param  x_pos - start x-coordinate of rectangular
+	* @param  y_pos - start y-coordinate of rectangular
+	* @param  width - rectangular width in pixels
+	* @param  height - rectangular height in pixels
+  * @retval None 
+  */
+void FillRect(uint8_t x_pos, uint8_t y_pos, uint8_t width, uint8_t height)
 {
     for(;height>0;height--)
     {
@@ -372,6 +481,13 @@ void FillRect(uint8_t x_pos, uint8_t y_pos,uint8_t width, uint8_t height)
     }
 }
 
+/**
+  * @brief  Put filled circle data into framebuffer
+	* @param  Xpos - x-coordinate of circle center
+	* @param  Ypos - y-coordinate of circle center
+	* @param  Radius - circle radius in pixels
+  * @retval None 
+  */
 void FillCircle(uint8_t Xpos, uint8_t Ypos, uint8_t Radius)
 {
   int8_t  decision;        /* Decision Variable */
@@ -411,6 +527,14 @@ void FillCircle(uint8_t Xpos, uint8_t Ypos, uint8_t Radius)
   DrawCircle(Xpos, Ypos, Radius);
 }
 
+/**
+  * @brief  Put filled ellipse data into framebuffer
+	* @param  Xpos - x-coordinate of ellipse center
+	* @param  Ypos - y-coordinate of ellipse center
+	* @param  XRadius - ellipse radius in pixels by x
+	* @param  YRadius - ellipse radius in pixels by y
+  * @retval None 
+  */
 void FillEllipse(uint8_t Xpos, uint8_t Ypos, uint8_t XRadius, uint8_t YRadius)
 {
   char x = 0, y = -XRadius, err = 2-2*YRadius, e2;

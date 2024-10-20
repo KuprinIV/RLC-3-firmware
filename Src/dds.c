@@ -1,7 +1,12 @@
 #include "dds.h"
 
-uint16_t ctrl_reg = 0;
+static uint16_t ctrl_reg = 0;
 
+/**
+  * @brief  Init DDS generator AD9833
+  * @param  None
+  * @retval None
+  */
 void DDS_Init(void)
 {
 	/* SPI and GPIOs inited in nokia_5110_lib.c */	
@@ -12,15 +17,20 @@ void DDS_Init(void)
 	GPIOB->CRH |= 0x00000002;
 	GPIOB->BSRR = GPIO_PIN_8;
 	
-	reset(1);
-	setDDSFrequency(1);
-	setPhase(0);
+	DDS_Reset(1);
+	DDS_SetFrequency(1);
+	DDS_SetPhase(0);
 	ctrl_reg &= 0xF0FF;
-	reset(0);
-	setSignalType(0);
+	DDS_Reset(0);
+	DDS_SetSignalType(0);
 }
 
-void signalOn(uint8_t state)
+/**
+  * @brief  DDS output signal control
+	* @param  state: 0 - output is disabled, 1 - output is enabled
+  * @retval None
+  */
+void DDS_SignalOn(uint8_t state)
 {
 	if(state)
 	{
@@ -30,15 +40,25 @@ void signalOn(uint8_t state)
 	{
 			ctrl_reg |= 0x00C0;
 	}
-	writeRegister(ctrl_reg);
+	DDS_WriteRegister(ctrl_reg);
 }
 
-void setSignalType(uint8_t index)
+/**
+  * @brief  DDS set output signal type
+	* @param  index: 0 - sine wave, 1 - triangle, 2 - square MSB/2 amplitude, 3 - square MSB amplitude
+  * @retval None
+  */
+void DDS_SetSignalType(uint8_t index)
 {	
 	ctrl_reg &= 0xFFD5;//sine
 	
 	switch(index)
 	{	
+		case 0:
+		default:
+			
+			break;
+		
 		case 1:
 			ctrl_reg |= 0x0002;//triangle
 			break;
@@ -51,10 +71,15 @@ void setSignalType(uint8_t index)
 			ctrl_reg |= 0x0028;// square msb
 			break;		
 	}
-	writeRegister(ctrl_reg);
+	DDS_WriteRegister(ctrl_reg);
 }
 
-void setDDSFrequency(int freq)
+/**
+  * @brief  DDS set output signal frequency
+	* @param  freq: 0 - 122.0703125 Hz, 1 - 976.5625 Hz, 2 - 7.8125 kHz, 3 - 62.5 kHz
+  * @retval None
+  */
+void DDS_SetFrequency(int freq)
 {
 	uint32_t freqData = 0;
 	switch(freq)
@@ -81,38 +106,54 @@ void setDDSFrequency(int freq)
 	}
 
 	ctrl_reg &= 0xEFFF;//set b28 bit
-	writeRegister(ctrl_reg);
-	writeRegister((freqData&0x3FFF)|0x4000);
+	DDS_WriteRegister(ctrl_reg);
+	DDS_WriteRegister((freqData&0x3FFF)|0x4000);
 	
 	ctrl_reg |= 0x1000;//set b28 bit
-	writeRegister(ctrl_reg);
-	writeRegister(((freqData>>14)&0x3FFF)|0x4000);
+	DDS_WriteRegister(ctrl_reg);
+	DDS_WriteRegister(((freqData>>14)&0x3FFF)|0x4000);
 	
-	ctrl_reg &= 0xC7FF; //reset b28 bit & select FREQ0 register data
-	writeRegister(ctrl_reg);
+	ctrl_reg &= 0xC7FF; //DDS_Reset b28 bit & select FREQ0 register data
+	DDS_WriteRegister(ctrl_reg);
 }
 
-void setPhase(int phase)
+/**
+  * @brief  DDS set output signal phase
+	* @param  phase: phase in degrees from 0...360
+  * @retval None
+  */
+void DDS_SetPhase(int phase)
 {
 	uint16_t phaseData = (uint16_t)((float)phase/360*4096);
-	writeRegister((phaseData&0x0FFF)|0xC000);
+	DDS_WriteRegister((phaseData&0x0FFF)|0xC000);
 }
 
-void reset(uint8_t state)
+/**
+  * @brief  DDS reset control
+	* @param  state: 0 - reset off, 1 - reset on
+  * @retval None
+  */
+void DDS_Reset(uint8_t state)
 {
 	ctrl_reg &= 0xFEFF;
 	if(state)
 	{
-		ctrl_reg |= 0x0100;//set reset bit
+		ctrl_reg |= 0x0100;//set DDS_Reset bit
 	}
-	writeRegister(ctrl_reg);
+	DDS_WriteRegister(ctrl_reg);
 }
 
-void writeRegister(uint16_t reg)
+/**
+  * @brief  DDS write register data
+	* @param  reg - register value
+  * @retval None
+  */
+void DDS_WriteRegister(uint16_t reg)
 {		
-	SPI1->CR1 &= ~SPI_CR1_SPE;
-	SPI1->CR1 |= SPI_CR1_DFF|SPI_CR1_CPOL;
-	SPI1->CR1 |= SPI_CR1_SPE;
+	// change SPI mode to 16 bit and change polarity
+	SPI1->CR1 &= ~SPI_CR1_SPE; // disable SPI1
+	SPI1->CR1 |= SPI_CR1_DFF|SPI_CR1_CPOL; // set 16 bit mode
+	SPI1->CR1 |= SPI_CR1_SPE; // enable SPI1
 	
 	GPIOB->BRR = GPIO_PIN_8;
 	
@@ -123,8 +164,9 @@ void writeRegister(uint16_t reg)
 	
 	GPIOB->BSRR = GPIO_PIN_8;
 	
-	SPI1->CR1 &= ~SPI_CR1_SPE;
-	SPI1->CR1 &= ~(SPI_CR1_DFF|SPI_CR1_CPOL);
-	SPI1->CR1 |= SPI_CR1_SPE;
+	// restore default SPI mode and polarity
+	SPI1->CR1 &= ~SPI_CR1_SPE; // disable SPI1
+	SPI1->CR1 &= ~(SPI_CR1_DFF|SPI_CR1_CPOL); // set 8 bit mode
+	SPI1->CR1 |= SPI_CR1_SPE; // enable SPI1
 	
 }

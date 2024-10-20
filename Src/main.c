@@ -57,8 +57,11 @@
 #include "usb_device.h"
 #include "rlc.h"
 #include "rlc_windows.h"
+#include "rlc_device.h"
 #include "dds.h"
 #include "complex_numbers.h"
+#include "usbd_customhid.h"
+#include "usbd_custom_hid_if.h"
 #include <math.h>
 /* USER CODE END Includes */
 
@@ -66,19 +69,11 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-extern FontInfo font6x8;
-extern Window DisplayMainWnd;
-extern pWindow CurrentWnd;
-extern Window MenuWnd;
-extern Window SetupWnds[6];
-extern Data rlcData;
-
-RLC_Events events = {0, 0};
+RLC_Events events = {0, 0, 0, 0};
 uint16_t ADC_data[NUM_SAMPLES] = {0};
+MeasureValue dataType;
 
-extern uint8_t battery_percent;
-extern MeasureValue dataType;
-extern float rsList[5];
+extern Data rlcData;
 extern CalibrationVals calibrationValues;
 /* USER CODE END PV */
 
@@ -101,10 +96,11 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	uint8_t divider = 0, level = 0, isPoweredOn = 0;
+	uint8_t divider = 0, isPoweredOn = 0;
 	uint16_t light_cnt = 0;
 	uint8_t but1_old = 0, but2_old = 1, but3_old = 0, rxReport[9] = {0};
 	uint8_t pwrCntr = 0, pwrDisFlag = 0;
+	uint8_t battery_percent = 10;
 	int averageCntr = 0;
 	ComplexNumber VData = {0, 0}, IData = {0, 0};
 	ComplexNumber ZData_avr = {0, 0}, VData_avr = {0, 0}, IData_avr = {0, 0};
@@ -134,29 +130,29 @@ int main(void)
   MX_GPIO_Init();
 	
 	HAL_Delay(1000);
-	powerCtrl(1);
+	RLCDEV_PowerCtrl(1);
 	
   /* USER CODE BEGIN 2 */
 	if(USB_ON()) //USB plugged
 	{
-		enableUSB_PullUp(1);
+		RLCDEV_EnableUSB_PullUp(1);
 		MX_USB_DEVICE_Init();
-		chargerCtrl(1);
+		RLCDEV_ChargerCtrl(1);
 	}
-		
+	SPI_Init();
+	
 	WindowsInit();
 	Display_Init();
-	Clear_Buffer();
-	Write_Buffer();
+	Display_Clear_Buffer();
+	Display_Write_Buffer();
 	
 	DDS_Init();
-	SPI_Init();
 	Timers_Init();	
 	ADC_Init();
 	
-	initRLC();
-	ReadCalibrationDataFromFlash();
-	ReadDisplaySettings();
+	RLC_Init();
+	RLC_ReadCalibrationDataFromFlash();
+	RLCDEV_ReadDisplaySettings(&rlcData);
 
   /* USER CODE END 2 */
 
@@ -167,6 +163,7 @@ int main(void)
   /* USER CODE END WHILE */
 		
   /* USER CODE BEGIN 3 */
+		// handle ADC data received event
 		if(events.onDataReceived)
 		{
 			events.onDataReceived = 0;
@@ -175,20 +172,20 @@ int main(void)
 			{
 				if(dataType == VoltageData)
 				{
-					analyzeInputData(ADC_data, NUM_SAMPLES, getFrequency(), &volt_adc_ampl, &VData);
+					RLC_AnalyzeInputData(ADC_data, NUM_SAMPLES, RLC_GetFrequencyIndex(), &volt_adc_ampl, &VData);
 					memset(ADC_data,0, sizeof(ADC_data));
 				}
 				if(dataType == CurrentData)
 				{
-					analyzeInputData(ADC_data, NUM_SAMPLES, getFrequency(), &curr_adc_ampl, &IData);
-					memset(ADC_data,0, sizeof(ADC_data));
+					RLC_AnalyzeInputData(ADC_data, NUM_SAMPLES, RLC_GetFrequencyIndex(), &curr_adc_ampl, &IData);
+					memset(ADC_data, 0, sizeof(ADC_data));
 					
 					// check overscale of ADC input
 					if((volt_adc_ampl < ADC_OVERSCALE) && (curr_adc_ampl < ADC_OVERSCALE)) // no overscale
 					{				
 						// calculate test component current
-						IData.Re = IData.Re/rsList[getRSense()];
-						IData.Im = IData.Im/rsList[getRSense()];
+						IData.Re = IData.Re/RLC_GetRSenseValue();
+						IData.Im = IData.Im/RLC_GetRSenseValue();
 						
 						// add calculated values to average
 						VData_avr = CplxSum(VData, VData_avr);
@@ -206,7 +203,7 @@ int main(void)
 						{
 							fi += M_PI;
 						}
-						setParameters(volt_adc_ampl, curr_adc_ampl, fi);
+						RLC_SetParameters(volt_adc_ampl, curr_adc_ampl, fi);
 						
 						// reject this average
 						averageCntr -= 2;
@@ -229,10 +226,10 @@ int main(void)
 				if(calibrationValues.isCalibrated == 1 && !rlcData.is_calibration_started)
 				{
 					ComplexNumber nom, denom;
-					nom = CplxDif(ZData_avr, calibrationValues.Zc[getFrequency()]);
-					denom = CplxDif(calibrationValues.Zo[getFrequency()], ZData_avr);
+					nom = CplxDif(ZData_avr, calibrationValues.Zc[RLC_GetFrequencyIndex()]);
+					denom = CplxDif(calibrationValues.Zo[RLC_GetFrequencyIndex()], ZData_avr);
 					nom = CplxDiv(nom, denom);
-					ZData_avr = CplxMul(nom, calibrationValues.Zo[getFrequency()]);
+					ZData_avr = CplxMul(nom, calibrationValues.Zo[RLC_GetFrequencyIndex()]);
 				}
 				
 				Zmag_avr = CplxMag(ZData_avr);
@@ -248,7 +245,7 @@ int main(void)
 				rlcData.Ux = (float)volt_adc_ampl*3.3f/65536;
 				rlcData.fi = fi_avr;//atanf(ZData_avr.Im/ZData_avr.Re);
 				
-				setParameters(volt_adc_ampl, curr_adc_ampl, rlcData.fi);
+				RLC_SetParameters(volt_adc_ampl, curr_adc_ampl, rlcData.fi);
 			
 				VData_avr.Re = 0;
 				VData_avr.Im = 0;
@@ -260,213 +257,178 @@ int main(void)
 				ZData_avr.Im = 0;	
 			}
 		}
-		if(events.onDisplayRedraw)
-		{
-			events.onDisplayRedraw = 0;
-			
-			//power control
-			if(rlcData.batADC_data[0] < 3.4f)
+		else
+		{	
+			// handle display redraw event
+			if(events.onDisplayRedraw)
 			{
-					Clear_Buffer();
-	  			Write_Buffer();
-					// display reset
-					Display_Port->BSRR = RST<<16;
-					// disable display backlight
-					LightDisable();
-					powerCtrl(0);
-					HAL_PWR_EnterSTANDBYMode();
-					while(1){}
-			}
-			
-			if(USB_ON()) // if USB on
-			{	
-				PaintUSBIndicator();
-				if(!(GPIOA->IDR & GPIO_PIN_5)) //battery is charging
-				{
-					PaintBatteryIndicator(divider);
-				}
-				else
-				{
-					chargerCtrl(0); // disable charger
-					PaintBatteryIndicator(battery_percent+1);
-				}
-			}
-			else
-			{
-				PaintBatteryIndicator(battery_percent+1);
-			}
-			
-			// buttons scan
-			if(IS_LEFT_BUTTON_PRESSED && !but1_old) // Prev
-			{
-				but1_old = 1;
-				// enable display light
-				LightEnable();		
-				light_cnt = 0; // clear light delay counter
+				events.onDisplayRedraw = 0;
 				
-				switch(level)
-				{	
-					case 0:
-						CurrentWnd = CurrentWnd->prev;
-						break;
-				
-					case 1:
-						CurrentWnd->callback(CurrentWnd,&rlcData,Prev ,NoAction);
-						break;
+				// buttons scan
+				if(IS_LEFT_BUTTON_PRESSED() && !but1_old) // Prev
+				{
+					but1_old = 1;
+					// enable display light
+					RLCDEV_BacklightCtrl(1);	
+					light_cnt = 0; // clear light delay counter
 					
-					case 2:
-						CurrentWnd->callback(CurrentWnd,&rlcData,NoAction, Prev);
-						break;
+					goToPrevWindowOrItem();
 				}
-				
-			}
-			if(IS_CENTER_BUTTON_PRESSED && !but2_old) //OK
-			{
-				but2_old = 1;
-				// enable display light
-				LightEnable();		
-				light_cnt = 0; // clear light delay counter
-				pwrDisFlag = 0; //reset flag
-				
-				if(!isPoweredOn)
+				else if(!IS_LEFT_BUTTON_PRESSED()) 
 				{
-					isPoweredOn = 1;
+					but1_old = 0;
 				}
-				else
-				{					
-					pWindow p;
+				
+				if(IS_CENTER_BUTTON_PRESSED() && !but2_old) //OK
+				{
+					but2_old = 1;
+					// enable display light
+					RLCDEV_BacklightCtrl(1);	
+					light_cnt = 0; // clear light delay counter
+					pwrDisFlag = 0; //reset flag
 					
-					switch(level)
+					if(!isPoweredOn)
 					{
-						case 0:
-							p = CurrentWnd;
-							CurrentWnd = &MenuWnd;
-							CurrentWnd->prev = p;
-							CurrentWnd->callback(CurrentWnd,&rlcData,NoAction,NoAction);
-							level++;
-							break;
-						
-						case 1:
-							if(rlcData.current_item == 6)
-							{
-									CurrentWnd = CurrentWnd->prev;
-									CurrentWnd->callback(CurrentWnd,&rlcData,NoAction,NoAction);
-									rlcData.current_item = 0;
-									level--;
-							}
-							else
-							{
-									p = CurrentWnd;
-									CurrentWnd = &SetupWnds[rlcData.current_item];
-									CurrentWnd->prev = p;
-									CurrentWnd->callback(CurrentWnd,&rlcData,NoAction,NoAction);
-									level++;
-							}
-							break;
-						
-						case 2:
-							if(CurrentWnd->callback(CurrentWnd,&rlcData,Next,NoAction) == 0)
-							{
-									level--;
-									CurrentWnd = CurrentWnd->prev;
-									CurrentWnd->callback(CurrentWnd,&rlcData,NoAction,NoAction);
-							}
-							break;
+						isPoweredOn = 1;
+					}
+					else
+					{					
+						confirmWindowOrItem();
 					}
 				}
-			}
-			if(IS_RIGHT_BUTTON_PRESSED && !but3_old) //Next
-			{
-				but3_old = 1;
-
-				// enable display light
-				LightEnable();		
-				light_cnt = 0; // clear light delay counter
+				else if(!IS_CENTER_BUTTON_PRESSED())
+				{
+					but2_old = 0;
+					pwrDisFlag = 1; //set flag
+				}
 				
-				switch(level)
+				if(IS_RIGHT_BUTTON_PRESSED() && !but3_old) //Next
 				{
-					case 0:
-						CurrentWnd = CurrentWnd->next;
-						break;
+					but3_old = 1;
+
+					// enable display light
+					RLCDEV_BacklightCtrl(1);		
+					light_cnt = 0; // clear light delay counter
 					
-					case 1:
-						CurrentWnd->callback(CurrentWnd,&rlcData,Next, NoAction);
-						break;
-					
-					case 2:
-						CurrentWnd->callback(CurrentWnd,&rlcData,NoAction, Next);
-						break;
-				}		
-			}
-			
-			if(!IS_LEFT_BUTTON_PRESSED) 
-			{
-				but1_old = 0;
-			}
-			
-			if(!IS_CENTER_BUTTON_PRESSED)
-			{
-				but2_old = 0;
-				pwrDisFlag = 1; //set flag
-			}
-			
-			if(!IS_RIGHT_BUTTON_PRESSED) 
-			{
-				but3_old = 0;
-			}
-			
-			CurrentWnd->callback(CurrentWnd,&rlcData,NoAction, NoAction);
-		
-			if(divider < 10)
-			{
-				divider++;
-			}
-			else
-			{
-				divider = 0;
-				if(USB_ON())
+					goToNextWindowOrItem();
+				}
+				else if(!IS_RIGHT_BUTTON_PRESSED()) 
 				{
-					rxReport[0] = 2;
-					memcpy(rxReport+1, &(rlcData.R), sizeof(float));
-					memcpy(rxReport+5, &(rlcData.X), sizeof(float));
-					//USBD_CUSTOM_HID_SendReport_FS(rxReport, sizeof(rxReport));
-					memset(rxReport, 0, sizeof(rxReport));
-				}		
-			}
-			
-			Write_Buffer();
-			Clear_Buffer();
-			
-			if(pwrDisFlag)
-			{
-				if(pwrCntr++ > 16)
+					but3_old = 0;
+				}
+				
+				// show battery charge and USB indicators
+				if(USB_ON()) // if USB on
+				{	
+					PaintUSBIndicator();
+					if(!(GPIOA->IDR & GPIO_PIN_5)) //battery is charging
+					{
+						PaintBatteryIndicator(divider);
+					}
+					else
+					{
+						RLCDEV_ChargerCtrl(0); // disable charger
+						PaintBatteryIndicator(battery_percent+1);
+					}
+				}
+				else
 				{
-					isPoweredOn = 0;
-					// clear display buffer
-					Clear_Buffer();
-					Write_Buffer();
-					// display reset
-					Display_Port->BSRR = RST<<16;
-					// disable display backlight
-					LightDisable();
-					// power off 
-					powerCtrl(0);
-					HAL_PWR_EnterSTANDBYMode();
-					while(1){}
+					PaintBatteryIndicator(battery_percent+1);
+				}
+				
+				// redraw display window
+				refreshWindow();
+			
+				if(divider < 10)
+				{
+					divider++;
+				}
+				else
+				{
+					divider = 0;
+					if(USB_ON())
+					{
+						rxReport[0] = 2;
+						// send RLC measured data to USB host
+						memcpy(rxReport+1, &(rlcData.R), sizeof(float));
+						memcpy(rxReport+5, &(rlcData.X), sizeof(float));
+						//USBD_CUSTOM_HID_SendReport_FS(rxReport, sizeof(rxReport));
+						memset(rxReport, 0, sizeof(rxReport));
+					}		
+				}
+				
+				if(pwrDisFlag)
+				{
+					if(pwrCntr++ > 16)
+					{
+						isPoweredOn = 0;
+						// clear display buffer
+						Display_Clear_Buffer();
+						Display_Write_Buffer();
+						// display reset
+						Display_Port->BSRR = RST<<16;
+						// disable display backlight
+						RLCDEV_BacklightCtrl(0);
+						// power off 
+						RLCDEV_PowerCtrl(0);
+						HAL_PWR_EnterSTANDBYMode();
+						while(1){}
+					}
+				}
+				else
+				{
+					pwrCntr = 0;
+				}
+				
+				if(light_cnt < (rlcData.display_vals[1]<<4)) //disable display light through 5 s after last push button 
+				{
+					 light_cnt++;
+				}
+				else
+				{
+					 RLCDEV_BacklightCtrl(0);
 				}
 			}
-			else
+			
+			// handle battery ADC data converted event
+			if(events.onBatteryParamDataConverted)
 			{
-				pwrCntr = 0;
+				events.onBatteryParamDataConverted = 0;
+				RLCDEV_GetBatteryParameters(&rlcData, &battery_percent);
+				
+				//power control
+				if(rlcData.batADC_data[0] < 3.4f)
+				{
+						Display_Clear_Buffer();
+						Display_Write_Buffer();
+						// display reset
+						Display_Port->BSRR = RST<<16;
+						// disable display backlight
+						RLCDEV_BacklightCtrl(0);
+						RLCDEV_PowerCtrl(0);
+						HAL_PWR_EnterSTANDBYMode();
+						while(1){}
+				}
 			}
 			
-			if(light_cnt < (rlcData.display_vals[1]<<4)) //disable display light through 5 s after last push button 
+			// handle USB plug/unplug event
+			if(events.onUsbPlugEvent)
 			{
-				 light_cnt++;
-			}
-			else
-			{
-				 LightDisable();
+				events.onUsbPlugEvent = 0;
+				
+				if(USB_ON()) //USB plugged
+				{
+					RLCDEV_EnableUSB_PullUp(1);
+					MX_USB_DEVICE_Init();
+					RLCDEV_ChargerCtrl(1);
+				}
+				else //USB unplugged
+				{
+					RLCDEV_EnableUSB_PullUp(0);
+					RLCDEV_ChargerCtrl(0);
+					USBD_Stop(&hUsbDeviceFS);
+					USBD_DeInit(&hUsbDeviceFS);
+				}
 			}
 		}
   }
@@ -554,7 +516,7 @@ static void MX_GPIO_Init(void)
 	GPIOB->CRH &= 0xFFFF000F;
 	GPIOB->CRH |= 0x00002220;
 	
-	enableUSB_PullUp(1);
+	RLCDEV_EnableUSB_PullUp(1);
 
 	//USB ON & BUT_ON interrupts
 	//AFIO->EXTICR[2] |= AFIO_EXTICR3_EXTI9_PA;
@@ -632,7 +594,7 @@ static void Timers_Init()
 
 #ifndef USE_INTERNAL_ADC
 	TIM3->DIER |= TIM_DIER_UIE;
-	NVIC_SetPriority(TIM3_IRQn, 1);
+	NVIC_SetPriority(TIM3_IRQn, 0);
 	NVIC_EnableIRQ(TIM3_IRQn);
 #endif
 	TIM3->CR1 |= TIM_CR1_CEN;
@@ -679,6 +641,29 @@ static void ADC_Init()
 
 static void SPI_Init()
 {
+	// SPI1 init (DDS, LCD)
+	RCC->APB2ENR |= RCC_APB2ENR_IOPAEN|RCC_APB2ENR_IOPBEN;
+	RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
+	 
+	/* SPI SCK, MOSI and DC, RST, CS0 GPIO pin configuration  */
+	AFIO->MAPR |= AFIO_MAPR_SPI1_REMAP;
+	
+	GPIOA->CRH &= 0x0FFFFFFF;
+	GPIOA->CRH |= 0x20000000;
+
+	GPIOB->CRL &= 0xF0000FFF;
+	GPIOB->CRL |= 0x02B2B000;
+	
+	GPIOA->BSRR = CE;
+	
+	//SPI init 
+	SPI1->CR1 |= SPI_CR1_BR_2|SPI_CR1_BR_1; // fpclk/4
+	SPI1->CR1 |= SPI_CR1_BIDIMODE|SPI_CR1_BIDIOE|SPI_CR1_SSM; // 8-bit
+	SPI1->CR1 |= SPI_CR1_SSI;
+	SPI1->CR1 |= SPI_CR1_MSTR; // spi master 
+	SPI1->CR1 |= SPI_CR1_SPE;
+	
+	// SPI2 init (ADC)
 	RCC->APB2ENR |= RCC_APB2ENR_IOPBEN;
 	RCC->APB1ENR |= RCC_APB1ENR_SPI2EN;
 	 

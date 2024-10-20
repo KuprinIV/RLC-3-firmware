@@ -7,17 +7,16 @@
 #include "complex_numbers.h"
 
 #define M_PI 3.14159265359f
-//#define USE_INTERNAL_ADC 1
 #define NUM_SAMPLES 4096
 #define CALIBRATION_DATA_ADDR 0x0800FC00
 #define ADC_OVERSCALE					55000
 #define ADC_MAX_AMPLITUDE			50000
 
 #define USB_ON() (GPIOA->IDR&GPIO_PIN_3) // detecting USB
-#define IS_LEFT_BUTTON_PRESSED (GPIOA->IDR&GPIO_PIN_6)
-#define IS_CENTER_BUTTON_PRESSED (GPIOA->IDR&GPIO_PIN_9)
-#define IS_RIGHT_BUTTON_PRESSED (GPIOA->IDR&GPIO_PIN_7)
-#define IS_PWR_BUTTON_PRESSED (GPIOA->IDR & GPIO_PIN_9)
+#define IS_LEFT_BUTTON_PRESSED() (GPIOA->IDR&GPIO_PIN_6)
+#define IS_CENTER_BUTTON_PRESSED() (GPIOA->IDR&GPIO_PIN_9)
+#define IS_RIGHT_BUTTON_PRESSED() (GPIOA->IDR&GPIO_PIN_7)
+#define IS_PWR_BUTTON_PRESSED() (GPIOA->IDR & GPIO_PIN_9)
 
 typedef struct
 {
@@ -29,17 +28,27 @@ typedef struct
 	uint8_t measureType; // 0 - autoset, 1 - R, 2 - L, 3 - C, 4 - resettable R
 }measureParams, *pMeasureParams;
 
+typedef struct
+{
+    pMeasureParams param_vals;
+    uint8_t display_vals[3];
+    float batADC_data[3];
+    float R;
+    float X;
+    float Z;
+		float Ur;
+		float Ux;
+		float fi;
+	  uint8_t current_item;
+		uint8_t rsrp;
+		uint8_t is_calibration_started;
+}Data,*pData;
+
 typedef enum
 {
 	VoltageData,
 	CurrentData
 }MeasureValue;
-
-typedef struct
-{
-	uint8_t onDataReceived;
-	uint8_t onDisplayRedraw;
-}RLC_Events;
 
 typedef struct
 {
@@ -55,35 +64,21 @@ typedef struct
 	uint8_t isCalibrated;	
 }CalibrationVals;
 
-uint8_t getFrequency(void);
-uint8_t getRSense(void);
-uint8_t getUGain(void);
-uint8_t getMeasureType(void);
+void RLC_Init(void);
+void RLC_SetAutoSetParams(uint8_t);
+void RLC_SetFrequency(uint8_t);
+void RLC_SetRsense(uint8_t);
+void RLC_SetUGain(uint8_t);
+void RLC_SetMeasureType(uint8_t);
+void RLC_SetParameters(uint16_t, uint16_t, float);
+void RLC_AnalyzeInputData(uint16_t* data, uint16_t len, uint8_t freq_index, uint16_t* adc_amplitude, ComplexNumber* cn);
 
-void initRLC(void);
-void setAutoSetParams(uint8_t);
-void setFrequency(uint8_t);
-void setRsense(uint8_t);
-void setUGain(uint8_t);
-void setMeasureType(uint8_t);
-static void setRs(float Z);
-void setParameters(uint16_t, uint16_t, float);
-void analyzeInputData(uint16_t* data, uint16_t len, uint8_t freq_index, uint16_t* adc_amplitude, ComplexNumber* cn);
+uint8_t RLC_GetFrequencyIndex(void);
+float 	RLC_GetFrequencyValue(void);
+uint8_t RLC_GetRSenseIndex(void);
+float 	RLC_GetRSenseValue(void);
+uint8_t RLC_GetMeasureType(void);
 
-void chargerCtrl(uint8_t);
-void enableUSB_PullUp(uint8_t);
-void powerCtrl(uint8_t);
-
-void startADCRegularConv(void);
-void stopADCRegularConv(void);
-void startADCInjectedConv(void);
-
-void WriteCalibrationDataToFlash(void);
-void ReadCalibrationDataFromFlash(void);
-void ReadDisplaySettings(void);
-
-uint16_t AD7980_Conversion(void);
-
-void LightEnable(void);
-void LightDisable(void);
+void RLC_WriteCalibrationDataToFlash(void);
+void RLC_ReadCalibrationDataFromFlash(void);
 #endif

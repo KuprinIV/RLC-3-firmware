@@ -36,24 +36,12 @@
 #include "stm32f1xx_it.h"
 
 /* USER CODE BEGIN 0 */
-#include "nokia_5110_lib.h"
-#include "usb_device.h"
-#include "usbd_customhid.h"
-#include "usbd_custom_hid_if.h"
 #include "rlc.h"
-#include "rlc_windows.h"
-#include "complex_numbers.h"
-#include <math.h>
+#include "rlc_device.h"
 
-extern Data rlcData;
 extern uint16_t ADC_data[NUM_SAMPLES];
 extern RLC_Events events;
-
-
-uint8_t battery_percent = 10;
-uint16_t batADC_data[3] = {0};
-
-MeasureValue dataType;
+extern MeasureValue dataType;
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -218,31 +206,10 @@ void USB_LP_CAN1_RX0_IRQHandler(void)
 /* USER CODE BEGIN 1 */
 void ADC1_IRQHandler(void)
 {
-	static uint8_t index;
 	if(ADC1->SR & ADC_SR_JEOC)
 	{
-			ADC1->SR &= ~ADC_SR_JEOC;// clear interrupt flag
-			if(index < 10)
-			{
-				batADC_data[0] += ADC1->JDR2;
-				batADC_data[1] += ADC1->JDR3;
-				batADC_data[2] += ADC1->JDR1;
-				index++;
-			}
-			else
-			{
-				index = 0;
-				
-				rlcData.batADC_data[0] = (float)(batADC_data[0])*3.256f*2.007f/40960.0f;
-				if(USB_ON())
-				{
-					rlcData.batADC_data[1] = (float)(batADC_data[1])*3.256f/(40.96f*2.642f)-54;
-					if(rlcData.batADC_data[1] < 0) rlcData.batADC_data[1] = 0;
-					rlcData.batADC_data[2] = 87.228f - 20.884f*(float)(batADC_data[2])*3.256f*2.0f/40960.0f;					
-				}
-				battery_percent = (batADC_data[0] > 3.4f) ? ((uint8_t)(10*(rlcData.batADC_data[0] - 3.4f)/0.8f)) : (0);
-				batADC_data[0] = batADC_data[1] = batADC_data[2] = 0;
-			}
+			ADC1->SR &= ~ADC_SR_JEOC;// clear interrupt flag		
+			events.onBatteryParamDataConverted = 1;
 	}
 }
 
@@ -260,7 +227,7 @@ void TIM2_IRQHandler(void)
 		{
 			dataType = VoltageData;
 		}
-		startADCRegularConv();
+		RLCDEV_StartADCRegularConv();
 	}
 	if(TIM2->SR & TIM_SR_CC4IF)
 	{
@@ -268,13 +235,14 @@ void TIM2_IRQHandler(void)
 		
 		events.onDisplayRedraw = 1;
 		
-		startADCInjectedConv();
+		RLCDEV_StartADCInjectedConv();
 	}
 }
 
 void TIM3_IRQHandler(void)
 {
 	static uint16_t index;
+	uint16_t temp = 0;
 	
 	if(TIM3->SR & TIM_SR_UIF)
 	{
@@ -282,20 +250,20 @@ void TIM3_IRQHandler(void)
 		
 		if(index < NUM_SAMPLES)
 		{
-			uint16_t temp = 0;
 			//get external ADC data
 			SPI2->DR = 0xFF;
 			while(!(SPI2->SR & SPI_SR_TXE)){};
 				
 			while(!(SPI2->SR & SPI_SR_RXNE)){};
-			temp = SPI2->DR;
+			temp = SPI2->DR; // this value will be ignored
 			
 			SPI2->DR = 0;
 			while(!(SPI2->SR & SPI_SR_TXE)){};
 				
 			while(!(SPI2->SR & SPI_SR_RXNE)){};
-			ADC_data[index] = SPI2->DR;
+			temp = SPI2->DR;
 				
+			ADC_data[index] = temp;	
 			index++;
 		}
 		if(index == NUM_SAMPLES)
@@ -303,7 +271,7 @@ void TIM3_IRQHandler(void)
 			while(!(SPI2->SR & SPI_SR_TXE)){};
 			while(SPI2->SR & SPI_SR_BSY);
 				
-			stopADCRegularConv();
+			RLCDEV_StopADCRegularConv();
 				
 			events.onDataReceived = 1;			
 			index = 0;
@@ -316,8 +284,7 @@ void DMA1_Channel1_IRQHandler(void)
 	if(DMA1->ISR & DMA_ISR_TCIF1)
 	{
 			DMA1->IFCR = DMA_IFCR_CTCIF1; // clear interrupt flag
-			stopADCRegularConv();
-			
+			RLCDEV_StopADCRegularConv();		
 			events.onDataReceived = 1;
 	}
 }
@@ -326,21 +293,8 @@ void EXTI3_IRQHandler(void)
 {
 	if(EXTI->PR & EXTI_PR_PR3)
 	{
-		EXTI->PR = EXTI_PR_PR3; // clear interrupt flag
-		
-		if(USB_ON()) //USB plugged
-		{
-			enableUSB_PullUp(1);
-			MX_USB_DEVICE_Init();
-			chargerCtrl(1);
-		}
-		else //USB unplugged
-		{
-			enableUSB_PullUp(0);
-			chargerCtrl(0);
-			USBD_Stop(&hUsbDeviceFS);
-			USBD_DeInit(&hUsbDeviceFS);
-		}
+		EXTI->PR = EXTI_PR_PR3; // clear interrupt flag	
+		events.onUsbPlugEvent = 1;
 	}
 }
 /* USER CODE END 1 */

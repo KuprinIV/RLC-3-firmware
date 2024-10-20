@@ -1,27 +1,162 @@
 #include "rlc_windows.h"
+#include "rlc_device.h"
 #include "stm32f1xx.h"
 #include <math.h>
 #include "usbd_custom_hid_if.h"
 
-#define USBD_DFU_BOOT_DEFAULT_ADD 0x0800A000
-
-typedef  void (*pFunction)(void);
-
 extern FontInfo font6x8, MSSanSerif_6pt;
-extern measureParams mParams;
 extern Stabilization rlcStabilzation;
 extern CalibrationVals calibrationValues;
-extern float freqList[4];
 extern USBD_HandleTypeDef hUsbDeviceFS;
+extern Data rlcData;
 	
-Window DisplayMainWnd;
-Window DisplaySecondWnd;
-pWindow CurrentWnd;
-Window MenuWnd;
-Window SetupWnds[6];
-	
-Data rlcData = {&mParams,{50,10,4},{4.2f,250.0f,25.0f},0,0,0,0,0,0,0,0,0};
+static Window DisplayMainWnd;
+static Window DisplaySecondWnd;
+static pWindow CurrentWnd;
+static Window MenuWnd;
+static Window SetupWnds[6];
 
+// current settings depth level
+static uint8_t level = 0;
+
+/**
+  * @brief  Initialize interface windows
+  * @param  none
+  * @retval none
+  */
+void WindowsInit()
+{
+	DisplayMainWnd.callback = &DisplayMainWindow;
+	DisplaySecondWnd.callback = &DisplaySecondWindow;
+	
+	DisplayMainWnd.next = &DisplaySecondWnd; DisplayMainWnd.prev = &DisplaySecondWnd;
+	DisplaySecondWnd.next = &DisplayMainWnd; DisplaySecondWnd.prev = &DisplayMainWnd;
+	
+	MenuWnd.callback = &SetMenuWindow;
+	
+	SetupWnds[0].callback = &SetupModeWindow;
+	SetupWnds[1].callback = &SetupParametersWindow;
+	SetupWnds[2].callback = &CalibrationWindow;
+	SetupWnds[3].callback = &SetBatteryStateWindow;
+	SetupWnds[4].callback = &SetupDisplayWindow;
+	SetupWnds[5].callback = &UpdateFirmwareWindow;
+	
+	CurrentWnd = &DisplayMainWnd;
+}
+
+/**
+  * @brief  Change window or go to the next window item
+  * @param  none
+  * @retval none
+  */
+void goToNextWindowOrItem(void)
+{
+	switch(level)
+	{
+		case 0:
+			CurrentWnd = CurrentWnd->next;
+			break;
+		
+		case 1:
+			CurrentWnd->callback(CurrentWnd, &rlcData, Next, NoAction);
+			break;
+		
+		case 2:
+			CurrentWnd->callback(CurrentWnd, &rlcData, NoAction, Next);
+			break;
+	}	
+}
+
+/**
+  * @brief  Change window or go to the previous window item
+  * @param  none
+  * @retval none
+  */
+void goToPrevWindowOrItem(void)
+{
+	switch(level)
+	{	
+		case 0:
+			CurrentWnd = CurrentWnd->prev;
+			break;
+
+		case 1:
+			CurrentWnd->callback(CurrentWnd, &rlcData, Prev, NoAction);
+			break;
+		
+		case 2:
+			CurrentWnd->callback(CurrentWnd, &rlcData, NoAction, Prev);
+			break;
+	}
+}
+
+/**
+  * @brief  Open or close window or confirm some window item
+  * @param  none
+  * @retval none
+  */
+void confirmWindowOrItem(void)
+{
+	pWindow p;
+
+	switch(level)
+	{
+		case 0:
+			p = CurrentWnd;
+			CurrentWnd = &MenuWnd;
+			CurrentWnd->prev = p;
+			CurrentWnd->callback(CurrentWnd, &rlcData, NoAction, NoAction);
+			level++;
+			break;
+
+		case 1:
+			if(rlcData.current_item == 6)
+			{
+					CurrentWnd = CurrentWnd->prev;
+					CurrentWnd->callback(CurrentWnd, &rlcData, NoAction, NoAction);
+					rlcData.current_item = 0;
+					level--;
+			}
+			else
+			{
+					p = CurrentWnd;
+					CurrentWnd = &SetupWnds[rlcData.current_item];
+					CurrentWnd->prev = p;
+					CurrentWnd->callback(CurrentWnd,&rlcData,NoAction,NoAction);
+					level++;
+			}
+			break;
+
+		case 2:
+			if(CurrentWnd->callback(CurrentWnd,&rlcData,Next,NoAction) == 0)
+			{
+					level--;
+					CurrentWnd = CurrentWnd->prev;
+					CurrentWnd->callback(CurrentWnd,&rlcData,NoAction,NoAction);
+			}
+			break;
+	}
+}
+
+/**
+  * @brief  Refresh window
+  * @param  none
+  * @retval none
+  */
+void refreshWindow(void)
+{		
+	CurrentWnd->callback(CurrentWnd, &rlcData, NoAction, NoAction);
+	Display_Write_Buffer();
+	Display_Clear_Buffer();
+}
+
+/**
+  * @brief  Callback function for drawing main window
+  * @param  wnd - data structure with window parameters
+  * @param  data - data structure with RLC device parameters
+  * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
+  */
 int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_action)
 {
     char param_str[14] = {0}, r_str[14] = {0}, x_str[14] = {0}, qd_str[14] = {0}, menu_str[13] = "    Меню    ";
@@ -34,18 +169,18 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
 		//current measure parameters string
 		if(data->param_vals->isAutoSet)
 		{
-			sprintf(param_str,"Auto F%d %s", rlcData.param_vals->testSignalFreq, measureTypesStr[rlcData.param_vals->measureType]);
+			sprintf(param_str,"Auto F%d %s", data->param_vals->testSignalFreq, measureTypesStr[data->param_vals->measureType]);
 		}
 		else
 		{
-			sprintf(param_str,"F%d %s", rlcData.param_vals->testSignalFreq, measureTypesStr[rlcData.param_vals->measureType]);
+			sprintf(param_str,"F%d %s", data->param_vals->testSignalFreq, measureTypesStr[data->param_vals->measureType]);
 		}
 		//capacity string
 		if((data->param_vals->measureType == 3) || ((data->param_vals->measureType == 0)&&(data->X < 0)))
 		{
 			C = fabs(data->X);
 			D = data->R/C;
-			C = 1/(2*M_PI*freqList[getFrequency()]*C);
+			C = 1/(2*M_PI*RLC_GetFrequencyValue()*C);
 			
 			if(data->rsrp == 1)
 			{
@@ -57,51 +192,51 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
 			{
 				sprintf(x_str, "%s = %0.3f пФ", Csp[data->rsrp], C*1e12);
 			}
-			if(C >= 1e-11 && C < 1e-10)
+			else if(C >= 1e-11 && C < 1e-10)
 			{
 				sprintf(x_str, "%s = %0.2f пФ", Csp[data->rsrp], C*1e12);
 			}
-			if(C >= 1e-10 && C < 1e-9)
+			else if(C >= 1e-10 && C < 1e-9)
 			{
 				sprintf(x_str, "%s = %0.1f пФ", Csp[data->rsrp], C*1e12);
 			}
-			if(C >= 1e-9 && C < 1e-8)
+			else if(C >= 1e-9 && C < 1e-8)
 			{
 				sprintf(x_str, "%s = %0.3f нФ", Csp[data->rsrp], C*1e9);
 			}
-			if(C >= 1e-8 && C < 1e-7)
+			else if(C >= 1e-8 && C < 1e-7)
 			{
 				sprintf(x_str, "%s = %0.2f нФ", Csp[data->rsrp], C*1e9);
 			}
-			if(C >= 1e-7 && C < 1e-6)
+			else if(C >= 1e-7 && C < 1e-6)
 			{
 				sprintf(x_str, "%s = %0.1f нФ", Csp[data->rsrp], C*1e9);
 			}
-			if(C >= 1e-6 && C < 1e-5)
+			else if(C >= 1e-6 && C < 1e-5)
 			{
 				sprintf(x_str, "%s = %0.3fмкФ", Csp[data->rsrp], C*1e6);
 			}
-			if(C >= 1e-5 && C < 1e-4)
+			else if(C >= 1e-5 && C < 1e-4)
 			{
 				sprintf(x_str, "%s = %0.2fмкФ", Csp[data->rsrp], C*1e6);
 			}
-			if(C >= 1e-4 && C < 1e-3)
+			else if(C >= 1e-4 && C < 1e-3)
 			{
 				sprintf(x_str, "%s = %0.1fмкФ", Csp[data->rsrp], C*1e6);
 			}
-			if(C >= 1e-3 && C < 1e-2)
+			else if(C >= 1e-3 && C < 1e-2)
 			{
 				sprintf(x_str, "%s = %0.3f мФ", Csp[data->rsrp], C*1e3);
 			}
-			if(C >= 1e-2 && C < 1e-1)
+			else if(C >= 1e-2 && C < 1e-1)
 			{
 				sprintf(x_str, "%s = %0.2f мФ", Csp[data->rsrp], C*1e3);
 			}
-			if(C >= 1e-1 && C < 1)
+			else if(C >= 1e-1 && C < 1)
 			{
 				sprintf(x_str, "%s = %0.1f мФ", Csp[data->rsrp], C*1e3);
 			}
-			if(C >= 1)
+			else
 			{
 				sprintf(x_str, "%s = %0.1f Ф", Csp[data->rsrp], C);
 			}
@@ -111,7 +246,7 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
 		{
 			L = fabs(data->X);
 			D = data->R/L;
-			L = L/(2*M_PI*freqList[getFrequency()]);
+			L = L/(2*M_PI*RLC_GetFrequencyValue());
 			Q = 1/D;
 			
 			if(data->rsrp == 1)
@@ -125,43 +260,43 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
 			{
 				sprintf(x_str, "%s = %0.1f нГн", Lsp[data->rsrp], L*1e9);
 			}
-			if(L >= 1e-6 && L < 1e-5)
+			else if(L >= 1e-6 && L < 1e-5)
 			{
 				sprintf(x_str, "%s = %0.3fмкГн", Lsp[data->rsrp], L*1e6);
 			}			
-			if(L >= 1e-5 && L < 1e-4)
+			else if(L >= 1e-5 && L < 1e-4)
 			{
 				sprintf(x_str, "%s = %0.2fмкГн", Lsp[data->rsrp], L*1e6);
 			}			
-			if(L >= 1e-4 && L < 1e-3)
+			else if(L >= 1e-4 && L < 1e-3)
 			{
 				sprintf(x_str, "%s = %0.1fмкГн", Lsp[data->rsrp], L*1e6);
 			}
-			if(L >= 1e-3 && L < 1e-2)
+			else if(L >= 1e-3 && L < 1e-2)
 			{
 				sprintf(x_str, "%s = %0.3f мГн", Lsp[data->rsrp], L*1e3);
 			}
-			if(L >= 1e-2 && L < 1e-1)
+			else if(L >= 1e-2 && L < 1e-1)
 			{
 				sprintf(x_str, "%s = %0.2f мГн", Lsp[data->rsrp], L*1e3);
 			}			
-			if(L >= 1e-1 && L < 1)
+			else if(L >= 1e-1 && L < 1)
 			{
 				sprintf(x_str, "%s = %0.1f мГн", Lsp[data->rsrp], L*1e3);
 			}
-			if(L >= 1 && L < 10)
+			else if(L >= 1 && L < 10)
 			{
 				sprintf(x_str, "%s = %0.3f Гн", Lsp[data->rsrp], L);
 			}
-			if(L >= 10 && L < 100)
+			else if(L >= 10 && L < 100)
 			{
 				sprintf(x_str, "%s = %0.2f Гн", Lsp[data->rsrp], L);
 			}
-			if(L >= 100 && L < 1e3)
+			else if(L >= 100 && L < 1e3)
 			{
 				sprintf(x_str, "%s = %0.1f Гн", Lsp[data->rsrp], L);
 			}
-			if(L >= 1e3)
+			else
 			{
 				sprintf(x_str, "%s = %0.1f кГн", Lsp[data->rsrp], L/1e3);
 			}
@@ -177,49 +312,49 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
 		{
 			sprintf(r_str, "%s = %0.3f Ом", Rsp[data->rsrp], R);
 		}
-		if(R >= 1 && R < 100)
+		else if(R >= 1 && R < 100)
 		{
 			sprintf(r_str, "%s = %0.2f Ом", Rsp[data->rsrp], R);
 		}
-		if(R >= 100 && R < 1000)
+		else if(R >= 100 && R < 1000)
 		{
 			sprintf(r_str, "%s = %0.1f Ом", Rsp[data->rsrp], R);
 		}		
-		if(R >= 1e3 && R < 1e4)
+		else if(R >= 1e3 && R < 1e4)
 		{
 			sprintf(r_str, "%s = %0.3f кОм", Rsp[data->rsrp], R/1e3);
 		}
-		if(R >= 1e4 && R < 1e5)
+		else if(R >= 1e4 && R < 1e5)
 		{
 			sprintf(r_str, "%s = %0.2f кОм", Rsp[data->rsrp], R/1e3);
 		}
-		if(R >= 1e5 && R < 1e6)
+		else if(R >= 1e5 && R < 1e6)
 		{
 			sprintf(r_str, "%s = %0.1f кОм", Rsp[data->rsrp], R/1e3);
 		}
-		if(R >= 1e6 && R < 1e7)
+		else if(R >= 1e6 && R < 1e7)
 		{
 			sprintf(r_str, "%s = %0.3f МОм", Rsp[data->rsrp], R/1e6);
 		}
-		if(R >= 1e7 && R < 1e8)
+		else if(R >= 1e7 && R < 1e8)
 		{
 			sprintf(r_str, "%s = %0.2f МОм", Rsp[data->rsrp], R/1e6);
 		}
-		if(R >= 1e8 && R < 1e9)
+		else if(R >= 1e8 && R < 1e9)
 		{
 			sprintf(r_str, "%s = %0.1f МОм", Rsp[data->rsrp], R/1e6);
 		}
-		if(R >= 1e9 && R < 1e10)
+		else if(R >= 1e9 && R < 1e10)
 		{
 			sprintf(r_str, "%s = %0.3f ГОм", Rsp[data->rsrp], R/1e9);
 		}
-		if(R >= 1e10)
+		else
 		{
 			sprintf(r_str, "%s = %0.1f ГОм", Rsp[data->rsrp], R/1e9);
 		}
 		//copy strings in display buffer
 		String str1 = {0,0,AlignCenter,MSSanSerif_6pt,(const char*)param_str,NotInverted};
-		String str3 = {0,39,AlignCenter,font6x8,(const char*)menu_str,Inverted};
+		String str3 = {0,38,AlignCenter,font6x8,(const char*)menu_str,Inverted};
 		
     wnd->strings[0] = str1;
     wnd->strings[2] = str3;
@@ -232,7 +367,7 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
 		}
 		else
 		{
-			if(getMeasureType() == 1 || getMeasureType() == 4)
+			if(RLC_GetMeasureType() == 1 || RLC_GetMeasureType() == 4)
 			{
 				String str2 = {0,19,AlignCenter,font6x8,(const char*)r_str,NotInverted};
 				wnd->strings[1] = str2;
@@ -254,6 +389,13 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
     return 1;
 }
 
+/**
+  * @brief  Callback function for drawing debug window
+  * @param  wnd - data structure with window parameters
+  * @param  data - data structure with RLC device parameters
+  * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
+  */
 int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Action value_action)
 {
 	char Ux_str[14] = {0}, r_str[14] = {0}, Ur_str[14] = {0}, fi_str[14] = {0};
@@ -262,31 +404,31 @@ int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Action value
 	{
 		sprintf(r_str, "Z = %0.3f Ом", data->Z);
 	}
-	if(data->Z >= 1 && data->Z < 100)
+	else if(data->Z >= 1 && data->Z < 100)
 	{
 		sprintf(r_str, "Z = %0.2f Ом", data->Z);
 	}
-	if(data->Z >= 100 && data->Z < 1000)
+	else if(data->Z >= 100 && data->Z < 1000)
 	{
 		sprintf(r_str, "Z = %0.1f Ом", data->Z);
 	}		
-	if(data->Z >= 1e3 && data->Z < 1e4)
+	else if(data->Z >= 1e3 && data->Z < 1e4)
 	{
 		sprintf(r_str, "Z = %0.3f кОм", data->Z/1e3);
 	}
-	if(data->Z >= 1e4 && data->Z < 1e5)
+	else if(data->Z >= 1e4 && data->Z < 1e5)
 	{
 		sprintf(r_str, "Z = %0.2f кОм", data->Z/1e3);
 	}
-	if(data->Z >= 1e5 && data->Z < 1e6)
+	else if(data->Z >= 1e5 && data->Z < 1e6)
 	{
 		sprintf(r_str, "Z = %0.1f кОм", data->Z/1e3);
 	}
-	if(data->Z >= 1e6 && data->Z < 1e7)
+	else if(data->Z >= 1e6 && data->Z < 1e7)
 	{
 		sprintf(r_str, "Z = %0.3f МОм", data->Z/1e6);
 	}
-	if(data->Z >= 1e7)
+	else 
 	{
 		sprintf(r_str, "Z = %0.2f МОм", data->Z/1e6);
 	}
@@ -311,6 +453,154 @@ int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Action value
 	return 1;
 }
 
+/**
+  * @brief  Callback function for drawing settings menu window
+  * @param  wnd - data structure with window parameters
+  * @param  data - data structure with RLC device parameters
+  * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
+  */
+int SetMenuWindow(pWindow wnd, pData data, Action item_action, Action action)
+{
+	char title[10] = "Настройки";
+	String MenuTitle = {0,9,AlignCenter,font6x8,(const char*)title,NotInverted};
+	
+	const char* Items[7] = {"Режим","Параметры","Калибровка","Батарея","Дисплей","Обновление ПО","Выход"};
+	uint8_t ItemsQuantity = 7;
+
+	if(item_action == Next)
+	{
+			if(++data->current_item >= ItemsQuantity)
+			{
+					data->current_item = 0;
+			}
+  }
+	if(item_action == Prev)
+	{
+			if(--data->current_item > 128)
+			{
+					data->current_item = ItemsQuantity-1;
+			}
+	}
+	
+	for(uint8_t i = 0;(i < ItemsQuantity)&&(i < 3);i++)
+	{
+		if(data->current_item < 3)
+		{
+			String item = {5,19+9*i,AlignLeft,font6x8,Items[i],(i == data->current_item)?(Inverted):(NotInverted)};
+			wnd->strings[i] = item;
+	  }
+		else
+		{
+			String item =	{5,19+9*i,AlignLeft,font6x8,Items[data->current_item+i-2],(i == 2)?(Inverted):(NotInverted)};
+			wnd->strings[i] = item;
+		}
+	}	
+	
+	wnd->strings[3] = MenuTitle;
+	wnd->StringsQuantity = 4;
+  SetWindow(wnd);
+	
+	return 0;
+}
+
+/**
+  * @brief  Callback function for drawing setup measure mode setiings window
+  * @param  wnd - data structure with window parameters
+  * @param  data - data structure with RLC device parameters
+  * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
+  */
+int SetupModeWindow(pWindow wnd, pData data,Action item_action, Action value_action)
+{
+	  static uint8_t mode_current_index;
+	
+	  if(item_action == Next)
+    {
+			  if(++mode_current_index >= 3)
+        {
+            mode_current_index = 0;
+            return 0;
+        }
+		}
+		
+		if(value_action == Next)
+		{
+			switch(mode_current_index)
+			{
+				case 0:
+					if(++data->param_vals->measureType > 3)
+					{
+						data->param_vals->measureType = 0;
+					}
+					RLC_SetMeasureType(data->param_vals->measureType);
+					break;
+					
+				case 1:
+					data->rsrp++;
+					data->rsrp &= 0x01;
+					break;
+			}
+		}
+		if(value_action == Prev)
+		{
+			switch(mode_current_index)
+			{
+				case 0:
+					if(--data->param_vals->measureType >= 128)
+					{
+						data->param_vals->measureType = 3;
+					}
+					RLC_SetMeasureType(data->param_vals->measureType);
+					break;
+					
+				case 1:
+					data->rsrp--;
+					data->rsrp &= 0x01;
+					break;
+			}
+		}
+		
+		char low_str1[13] = "<   Далее  >\0";
+		const char* m_str[5] = {"Авто", "R", "L", "C", "R"};
+		
+		String str1 = {0,9,AlignLeft,font6x8,"Режим:",NotInverted};
+		String str2 = {39,9,AlignLeft,font6x8, m_str[data->param_vals->measureType],(mode_current_index == 0) ? (Inverted):(NotInverted)};
+		String str3 = {0,18,AlignLeft,font6x8,"Схема:",NotInverted};
+		String str4 = {0,18,AlignRight,font6x8,(data->rsrp == 0) ? ("Послед."):("Паралл."), (mode_current_index == 1) ? (Inverted):(NotInverted)};
+		
+		if(mode_current_index == 2)
+		{
+			String str5 = {0,38,AlignCenter,font6x8,"OK",Inverted};
+			wnd->strings[4] = str5;
+		}
+		else
+		{
+			String str5 = {0,38,AlignCenter,font6x8,(const char*)low_str1,NotInverted};
+			wnd->strings[4] = str5;
+		}
+
+		wnd->strings[0] = str1;
+		wnd->strings[1] = str2;
+		wnd->strings[2] = str3;
+		wnd->strings[3] = str4;
+
+		wnd->StringsQuantity = 5;	
+		
+		DrawLine(0,36,83,36);
+
+		SetWindow(wnd);
+
+		return 1;
+}
+
+/**
+  * @brief  Callback function for drawing setup measure parameters settings window
+  * @param  wnd - data structure with window parameters
+  * @param  data - data structure with RLC device parameters
+  * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
+  */
 int SetupParametersWindow(pWindow wnd, pData data, Action item_action, Action value_action)
 {
 		static uint8_t param_current_index;
@@ -397,10 +687,10 @@ int SetupParametersWindow(pWindow wnd, pData data, Action item_action, Action va
        }
     }
 		
-			 setFrequency(data->param_vals->testSignalFreq);
-			 //setUGain(data->param_vals->uGain);
-			 //setRsense(data->param_vals->R_sense);
-			 setAutoSetParams(data->param_vals->isAutoSet);
+		RLC_SetFrequency(data->param_vals->testSignalFreq);
+		//setUGain(data->param_vals->uGain);
+		//setRsense(data->param_vals->R_sense);
+		RLC_SetAutoSetParams(data->param_vals->isAutoSet);
 		
 		char freq_str[4][8] = {"120Гц\0","1кГц\0","8кГц\0","62кГц"};
 		//char gain_str[4][5] = {"2\0","5\0","13\0","34\0"};
@@ -486,89 +776,295 @@ int SetupParametersWindow(pWindow wnd, pData data, Action item_action, Action va
     return 1;
 }
 
-int SetupModeWindow(pWindow wnd, pData data,Action item_action, Action value_action)
+/**
+  * @brief  Callback function for drawing calibration mode settings window
+  * @param  wnd - data structure with window parameters
+  * @param  data - data structure with RLC device parameters
+  * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
+  */
+int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action)
 {
-	  static uint8_t mode_current_index;
+	static uint8_t freqIndex, dataIndex, isFirst, calibrationType, isChecked, isEnded;
+	static CalibrationVals tempCalVals;
 	
 	  if(item_action == Next)
     {
-			  if(++mode_current_index >= 3)
-        {
-            mode_current_index = 0;
-            return 0;
-        }
-		}
-		
-		if(value_action == Next)
-		{
-			switch(mode_current_index)
-			{
-				case 0:
-					if(++data->param_vals->measureType > 3)
-					{
-						data->param_vals->measureType = 0;
-					}
-					setMeasureType(data->param_vals->measureType);
-					break;
+			 isFirst = 0;
+			 freqIndex = 0;
+			 isChecked = 0;
+			 calibrationType = 0;
+			 data->is_calibration_started = 0;
+			 if(isEnded)
+			 {
+					RLC_WriteCalibrationDataToFlash();//write calibration data to flash
+			 }
+			 // reset temporary impedance data containers
+			 for(int idx = 0; idx < 4; idx++)
+			 {
+				 tempCalVals.Zc[idx].Re = 0.0f;
+				 tempCalVals.Zc[idx].Im = 0.0f;
 					
-				case 1:
-					data->rsrp++;
-					data->rsrp &= 0x01;
-					break;
-			}
-		}
-		if(value_action == Prev)
-		{
-			switch(mode_current_index)
-			{
-				case 0:
-					if(--data->param_vals->measureType >= 128)
-					{
-						data->param_vals->measureType = 3;
-					}
-					setMeasureType(data->param_vals->measureType);
-					break;
-					
-				case 1:
-					data->rsrp--;
-					data->rsrp &= 0x01;
-					break;
-			}
-		}
-		
-		char low_str1[13] = "<   Далее  >\0";
-		const char* m_str[4] = {"Авто", "R", "L", "C"};
-		
-		String str1 = {0,9,AlignLeft,font6x8,"Режим:",NotInverted};
-		String str2 = {39,9,AlignLeft,font6x8, m_str[data->param_vals->measureType],(mode_current_index == 0) ? (Inverted):(NotInverted)};
-		String str3 = {0,18,AlignLeft,font6x8,"Схема:",NotInverted};
-		String str4 = {0,18,AlignRight,font6x8,(data->rsrp == 0) ? ("Послед."):("Паралл."), (mode_current_index == 1) ? (Inverted):(NotInverted)};
-		
-		if(mode_current_index == 2)
-		{
-			String str5 = {0,38,AlignCenter,font6x8,"OK",Inverted};
-			wnd->strings[4] = str5;
-		}
+				 tempCalVals.Zo[idx].Re = 0.0f;
+				 tempCalVals.Zo[idx].Im = 0.0f;
+			 }
+			 RLC_SetAutoSetParams(1); //enable autoset params
+       return 0;
+    }
 		else
 		{
-			String str5 = {0,38,AlignCenter,font6x8,(const char*)low_str1,NotInverted};
-			wnd->strings[4] = str5;
+			if(!isFirst)
+			{
+				isEnded = 0;
+				
+				String str1 = {0,18,AlignCenter,font6x8,"Разомкните",NotInverted};
+				String str2 = {0, 27,AlignCenter,font6x8,"щупы",NotInverted};
+				String str3 = {0, 38,AlignCenter,font6x8,"Отмена", Inverted};
+				
+				wnd->strings[0] = str1;
+				wnd->strings[1] = str2;
+				wnd->strings[2] = str3;
+					 
+				wnd->StringsQuantity = 3;
+					
+				RLC_SetAutoSetParams(0); //disable autoset params
+				RLC_SetMeasureType(0);
+				data->is_calibration_started = 1;
+				isFirst++;
+				
+				// init temporary impedance data containers
+				for(int idx = 0; idx < 4; idx++)
+				{
+					tempCalVals.Zc[idx].Re = 0.0f;
+					tempCalVals.Zc[idx].Im = 0.0f;
+					
+					tempCalVals.Zo[idx].Re = 0.0f;
+					tempCalVals.Zo[idx].Im = 0.0f;
+				}
+				return 1;
+			}
+			
+			if(calibrationType == 0) //open probes
+			{
+				if((data->Z < 5e5) && (!isChecked))
+				{
+					String str1 = {0,9,AlignCenter,font6x8,"Разомкните",NotInverted};
+					String str2 = {0,18,AlignCenter,font6x8,"щупы",NotInverted};
+					String str3 = {0, 38,AlignCenter,font6x8,"Отмена", Inverted};
+					
+					wnd->strings[0] = str1;
+					wnd->strings[1] = str2;
+					wnd->strings[2] = str3;
+						 
+					wnd->StringsQuantity = 3;
+				}
+				else
+				{			
+					isChecked = 1;
+					if(freqIndex < 4)
+					{
+						RLC_SetFrequency(freqIndex);
+					}
+					
+					if(!rlcStabilzation.isStable)
+					{
+						String str1 = {0,14,AlignCenter,font6x8,"Стабилизация",NotInverted};
+						String str2 = {0,38,AlignCenter,font6x8,"Отмена", Inverted};
+						
+						wnd->strings[0] = str1;
+						wnd->strings[1] = str2;
+						
+						wnd->StringsQuantity = 2;
+					}
+					else
+					{
+						if(dataIndex < 20 && freqIndex < 4)
+						{
+							String str1 = {0,9,AlignCenter,font6x8,"Калибровка:",NotInverted};
+							char stepStr[12] = {0};
+							sprintf(stepStr,"шаг %d из 4",freqIndex+1);
+							String str2 = {0,18,AlignCenter,font6x8, (const char*)stepStr,NotInverted};
+							String str3 = {0, 38,AlignCenter,font6x8,"Отмена", Inverted};
+							
+							wnd->strings[0] = str1;
+							wnd->strings[1] = str2;
+							wnd->strings[2] = str3;
+							wnd->StringsQuantity = 3;
+							
+							tempCalVals.Zo[freqIndex].Re += data->R;
+							tempCalVals.Zo[freqIndex].Im += data->X;
+							dataIndex++;
+						}
+						else
+						{						
+							tempCalVals.Zo[freqIndex].Re /= 20;
+							tempCalVals.Zo[freqIndex].Im /= 20;
+							
+							if(freqIndex < 4)
+							{
+								freqIndex++;
+								dataIndex = 0;
+							}
+							if(freqIndex == 4)
+							{
+								freqIndex = 0;
+								isChecked = 0;
+								dataIndex = 0;
+								calibrationType++; // to next calibration type
+								RLC_SetFrequency(0);
+								rlcStabilzation.isStable = 0;
+							}
+						}
+					}
+				}
+			}
+			if(calibrationType == 1) //closed probes
+			{
+				if((data->Z > 0.1) && (!isChecked))
+				{
+					String str1 = {0,9,AlignCenter,font6x8,"Замкните",NotInverted};
+					String str2 = {0,18,AlignCenter,font6x8,"щупы",NotInverted};
+					String str3 = {0,38,AlignCenter,font6x8,"Отмена", Inverted};
+					
+					wnd->strings[0] = str1;
+					wnd->strings[1] = str2;
+					wnd->strings[2] = str3;
+						 
+					wnd->StringsQuantity = 3;
+				}
+				else
+				{			
+					isChecked = 1;
+					if(freqIndex < 4)
+					{
+						RLC_SetFrequency(freqIndex);
+					}
+					
+					if(!rlcStabilzation.isStable)
+					{
+						String str1 = {0,14,AlignCenter,font6x8,"Стабилизация",NotInverted};
+						String str2 = {0,38,AlignCenter,font6x8,"Отмена", Inverted};
+						
+						wnd->strings[0] = str1;
+						wnd->strings[1] = str2;
+						
+						wnd->StringsQuantity = 2;
+					}
+					else
+					{
+						if(dataIndex < 20 && freqIndex < 4)
+						{
+							String str1 = {0,9,AlignCenter,font6x8,"Калибровка:",NotInverted};
+							char stepStr[12] = {0};
+							sprintf(stepStr,"шаг %d из 4",freqIndex+1);
+							String str2 = {0,18,AlignCenter,font6x8, (const char*)stepStr,NotInverted};
+							String str3 = {0, 38,AlignCenter,font6x8,"Отмена", Inverted};
+							
+							wnd->strings[0] = str1;
+							wnd->strings[1] = str2;
+							wnd->strings[2] = str3;
+							wnd->StringsQuantity = 3;
+							
+							tempCalVals.Zc[freqIndex].Re += data->R;
+							tempCalVals.Zc[freqIndex].Im += data->X;
+							dataIndex++;
+						}
+						else
+						{						
+							tempCalVals.Zc[freqIndex].Re /= 20;
+							tempCalVals.Zc[freqIndex].Im /= 20;						
+							
+							if(freqIndex < 4)
+							{
+								freqIndex++;
+								dataIndex = 0;
+							}
+							if(freqIndex == 4) //end of calibration
+							{
+								memcpy(&calibrationValues, &tempCalVals, sizeof(calibrationValues));
+								calibrationValues.isCalibrated = 1;
+								isEnded = 1;
+								
+								String str1 = {0,9,AlignCenter,font6x8,"Калибровка",NotInverted};
+								String str2 = {0,18,AlignCenter,font6x8,"завершена!",NotInverted};
+								String str3 = {0,38, AlignCenter, font6x8, "Сохранить", Inverted};
+								DrawLine(0,36,83,36);
+								
+								wnd->strings[0] = str1;
+								wnd->strings[1] = str2;
+								wnd->strings[2] = str3;
+									 
+								wnd->StringsQuantity = 3;
+							}
+						}
+					}
+				}
+			}
 		}
-
-		wnd->strings[0] = str1;
-		wnd->strings[1] = str2;
-		wnd->strings[2] = str3;
-		wnd->strings[3] = str4;
-
-		wnd->StringsQuantity = 5;	
-		
 		DrawLine(0,36,83,36);
-
 		SetWindow(wnd);
-
 		return 1;
 }
 
+/**
+  * @brief  Callback function for drawing battery state settings window
+  * @param  wnd - data structure with window parameters
+  * @param  data - data structure with RLC device parameters
+  * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
+  */
+int SetBatteryStateWindow(pWindow wnd, pData data, Action item_action, Action action)
+{
+    char volt_str[10] = {0}, temp_str[11] = {0}, i_str[11] = {0};
+    if(item_action == NoAction)
+    {
+       sprintf(volt_str,"U = %.2fВ",data->batADC_data[0]);
+			
+			 if(USB_ON())
+			 {
+					 sprintf(temp_str,"T = %0.1f°C",data->batADC_data[2]);
+					 sprintf(i_str,"I = %0.0f мА",data->batADC_data[1]);
+				 
+				 	 String str1 = {0,9,AlignCenter,font6x8,(const char*)volt_str,NotInverted}; //voltage
+					 String str2 = {0,18,AlignCenter,font6x8,(const char*)i_str,NotInverted}; // current
+					 String str3 = {0,27,AlignCenter,font6x8,(const char*)temp_str,NotInverted}; //temperature
+					 String str4 = {0,38,AlignCenter,font6x8,"OK",Inverted};
+
+					 wnd->strings[0] = str1;
+					 wnd->strings[1] = str2;
+					 wnd->strings[2] = str3;
+					 wnd->strings[3] = str4;
+
+           wnd->StringsQuantity = 4;
+			 }
+			 else
+			 {
+				 	 String str1 = {0,9,AlignCenter,font6x8,(const char*)volt_str,NotInverted}; //voltage
+					 String str2 = {0,38,AlignCenter,font6x8,"OK",Inverted};
+					 
+					 wnd->strings[0] = str1;
+					 wnd->strings[1] = str2;
+					 
+					 wnd->StringsQuantity = 2;
+			 }
+			 
+			 DrawLine(0,36,83,36);
+       SetWindow(wnd);
+       return 1;
+    }
+    else
+    {
+        return 0;
+    }
+}
+
+/**
+  * @brief  Callback function for drawing display settings window
+  * @param  wnd - data structure with window parameters
+  * @param  data - data structure with RLC device parameters
+  * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
+  */
 int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action value_action)
 {
 		static uint8_t display_current_index;
@@ -580,7 +1076,7 @@ int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action value
             display_current_index = 0;
 						if(*((uint32_t*)(CALIBRATION_DATA_ADDR+sizeof(calibrationValues))) != ((data->display_vals[0]<<16)|(data->display_vals[0]<<8)|(data->display_vals[2])))
 						{
-							WriteCalibrationDataToFlash();
+							RLC_WriteCalibrationDataToFlash();
 						}
             return 0;
         }
@@ -665,12 +1161,7 @@ int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action value
 		//set brightness
 		TIM4->CCR2 = data->display_vals[0]/5;
 		//set contrast
-		GPIOA->BRR = CE;
-		Write_Cmd(0x21);
-		Write_Cmd(0x10+(data->display_vals[2]));
-		Write_Cmd(0x20);
-		Write_Cmd(0x0C);
-		GPIOA->BSRR = CE;
+		Display_SetContrast(data->display_vals[2]);
 
     char bright_str[5] = "";
     char cont_str[2] = "";
@@ -713,274 +1204,13 @@ int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action value
     return 1;
 }
 
-int SetBatteryStateWindow(pWindow wnd, pData data, Action item_action, Action action)
-{
-    char volt_str[10] = {0}, temp_str[11] = {0}, i_str[11] = {0};
-    if(item_action == NoAction)
-    {
-       sprintf(volt_str,"U = %.2fВ",data->batADC_data[0]);
-			
-			 if(USB_ON())
-			 {
-					 sprintf(temp_str,"T = %0.1f°C",data->batADC_data[2]);
-					 sprintf(i_str,"I = %0.0f мА",data->batADC_data[1]);
-				 
-				 	 String str1 = {0,9,AlignCenter,font6x8,(const char*)volt_str,NotInverted}; //voltage
-					 String str2 = {0,18,AlignCenter,font6x8,(const char*)i_str,NotInverted}; // current
-					 String str3 = {0,27,AlignCenter,font6x8,(const char*)temp_str,NotInverted}; //temperature
-					 String str4 = {0,38,AlignCenter,font6x8,"OK",Inverted};
-
-					 wnd->strings[0] = str1;
-					 wnd->strings[1] = str2;
-					 wnd->strings[2] = str3;
-					 wnd->strings[3] = str4;
-
-           wnd->StringsQuantity = 4;
-			 }
-			 else
-			 {
-				 	 String str1 = {0,9,AlignCenter,font6x8,(const char*)volt_str,NotInverted}; //voltage
-					 String str2 = {0,38,AlignCenter,font6x8,"OK",Inverted};
-					 
-					 wnd->strings[0] = str1;
-					 wnd->strings[1] = str2;
-					 
-					 wnd->StringsQuantity = 2;
-			 }
-			 
-			 DrawLine(0,36,83,36);
-       SetWindow(wnd);
-       return 1;
-    }
-    else
-    {
-        return 0;
-    }
-}
-
-int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action)
-{
-	static uint8_t freqIndex, dataIndex, isFirst, calibrationType, isChecked, isEnded;
-	static CalibrationVals tempCalVals;
-	
-	  if(item_action == Next)
-    {
-			 isFirst = 0;
-			 freqIndex = 0;
-			 isChecked = 0;
-			 calibrationType = 0;
-			 data->is_calibration_started = 0;
-			 if(isEnded)
-			 {
-					WriteCalibrationDataToFlash();//write calibration data to flash
-			 }
-			 // reset temporary impedance data containers
-			 for(int idx = 0; idx < 4; idx++)
-			 {
-				 tempCalVals.Zc[idx].Re = 0.0f;
-				 tempCalVals.Zc[idx].Im = 0.0f;
-					
-				 tempCalVals.Zo[idx].Re = 0.0f;
-				 tempCalVals.Zo[idx].Im = 0.0f;
-			 }
-			 setAutoSetParams(1); //enable autoset params
-       return 0;
-    }
-		else
-		{
-			if(!isFirst)
-			{
-				isEnded = 0;
-				
-				String str1 = {0,18,AlignCenter,font6x8,"Разомкните",NotInverted};
-				String str2 = {0, 27,AlignCenter,font6x8,"щупы",NotInverted};
-				String str3 = {0, 38,AlignCenter,font6x8,"Отмена", Inverted};
-				
-				wnd->strings[0] = str1;
-				wnd->strings[1] = str2;
-				wnd->strings[2] = str3;
-					 
-				wnd->StringsQuantity = 3;
-					
-				setAutoSetParams(0); //disable autoset params
-				setMeasureType(0);
-				data->is_calibration_started = 1;
-				isFirst++;
-				
-				// init temporary impedance data containers
-				for(int idx = 0; idx < 4; idx++)
-				{
-					tempCalVals.Zc[idx].Re = 0.0f;
-					tempCalVals.Zc[idx].Im = 0.0f;
-					
-					tempCalVals.Zo[idx].Re = 0.0f;
-					tempCalVals.Zo[idx].Im = 0.0f;
-				}
-				return 1;
-			}
-			
-			if(calibrationType == 0) //open probes
-			{
-				if((data->Z < 5e5) && (!isChecked))
-				{
-					String str1 = {0,9,AlignCenter,font6x8,"Разомкните",NotInverted};
-					String str2 = {0,18,AlignCenter,font6x8,"щупы",NotInverted};
-					String str3 = {0, 38,AlignCenter,font6x8,"Отмена", Inverted};
-					
-					wnd->strings[0] = str1;
-					wnd->strings[1] = str2;
-					wnd->strings[2] = str3;
-						 
-					wnd->StringsQuantity = 3;
-				}
-				else
-				{			
-					isChecked = 1;
-					if(freqIndex < 4)
-					{
-						setFrequency(freqIndex);
-					}
-					
-					if(!rlcStabilzation.isStable)
-					{
-						String str1 = {0,14,AlignCenter,font6x8,"Стабилизация",NotInverted};
-						String str2 = {0,38,AlignCenter,font6x8,"Отмена", Inverted};
-						
-						wnd->strings[0] = str1;
-						wnd->strings[1] = str2;
-						
-						wnd->StringsQuantity = 2;
-					}
-					else
-					{
-						if(dataIndex < 20 && freqIndex < 4)
-						{
-							String str1 = {0,9,AlignCenter,font6x8,"Калибровка:",NotInverted};
-							char stepStr[12] = {0};
-							sprintf(stepStr,"шаг %d из 4",freqIndex+1);
-							String str2 = {0,18,AlignCenter,font6x8, (const char*)stepStr,NotInverted};
-							String str3 = {0, 38,AlignCenter,font6x8,"Отмена", Inverted};
-							
-							wnd->strings[0] = str1;
-							wnd->strings[1] = str2;
-							wnd->strings[2] = str3;
-							wnd->StringsQuantity = 3;
-							
-							tempCalVals.Zo[freqIndex].Re += data->R;
-							tempCalVals.Zo[freqIndex].Im += data->X;
-							dataIndex++;
-						}
-						else
-						{						
-							tempCalVals.Zo[freqIndex].Re /= 20;
-							tempCalVals.Zo[freqIndex].Im /= 20;
-							
-							if(freqIndex < 4)
-							{
-								freqIndex++;
-								dataIndex = 0;
-							}
-							if(freqIndex == 4)
-							{
-								freqIndex = 0;
-								isChecked = 0;
-								dataIndex = 0;
-								calibrationType++; // to next calibration type
-								setFrequency(0);
-								rlcStabilzation.isStable = 0;
-							}
-						}
-					}
-				}
-			}
-			if(calibrationType == 1) //closed probes
-			{
-				if((data->Z > 0.1) && (!isChecked))
-				{
-					String str1 = {0,9,AlignCenter,font6x8,"Замкните",NotInverted};
-					String str2 = {0,18,AlignCenter,font6x8,"щупы",NotInverted};
-					String str3 = {0,38,AlignCenter,font6x8,"Отмена", Inverted};
-					
-					wnd->strings[0] = str1;
-					wnd->strings[1] = str2;
-					wnd->strings[2] = str3;
-						 
-					wnd->StringsQuantity = 3;
-				}
-				else
-				{			
-					isChecked = 1;
-					if(freqIndex < 4)
-					{
-						setFrequency(freqIndex);
-					}
-					
-					if(!rlcStabilzation.isStable)
-					{
-						String str1 = {0,14,AlignCenter,font6x8,"Стабилизация",NotInverted};
-						String str2 = {0,38,AlignCenter,font6x8,"Отмена", Inverted};
-						
-						wnd->strings[0] = str1;
-						wnd->strings[1] = str2;
-						
-						wnd->StringsQuantity = 2;
-					}
-					else
-					{
-						if(dataIndex < 20 && freqIndex < 4)
-						{
-							String str1 = {0,9,AlignCenter,font6x8,"Калибровка:",NotInverted};
-							char stepStr[12] = {0};
-							sprintf(stepStr,"шаг %d из 4",freqIndex+1);
-							String str2 = {0,18,AlignCenter,font6x8, (const char*)stepStr,NotInverted};
-							String str3 = {0, 38,AlignCenter,font6x8,"Отмена", Inverted};
-							
-							wnd->strings[0] = str1;
-							wnd->strings[1] = str2;
-							wnd->strings[2] = str3;
-							wnd->StringsQuantity = 3;
-							
-							tempCalVals.Zc[freqIndex].Re += data->R;
-							tempCalVals.Zc[freqIndex].Im += data->X;
-							dataIndex++;
-						}
-						else
-						{						
-							tempCalVals.Zc[freqIndex].Re /= 20;
-							tempCalVals.Zc[freqIndex].Im /= 20;						
-							
-							if(freqIndex < 4)
-							{
-								freqIndex++;
-								dataIndex = 0;
-							}
-							if(freqIndex == 4) //end of calibration
-							{
-								memcpy(&calibrationValues, &tempCalVals, sizeof(calibrationValues));
-								calibrationValues.isCalibrated = 1;
-								isEnded = 1;
-								
-								String str1 = {0,9,AlignCenter,font6x8,"Калибровка",NotInverted};
-								String str2 = {0,18,AlignCenter,font6x8,"завершена!",NotInverted};
-								String str3 = {0,38, AlignCenter, font6x8, "Сохранить", Inverted};
-								DrawLine(0,36,83,36);
-								
-								wnd->strings[0] = str1;
-								wnd->strings[1] = str2;
-								wnd->strings[2] = str3;
-									 
-								wnd->StringsQuantity = 3;
-							}
-						}
-					}
-				}
-			}
-		}
-		DrawLine(0,36,83,36);
-		SetWindow(wnd);
-		return 1;
-}
-
+/**
+  * @brief  Callback function for drawing firmware update settings window
+  * @param  wnd - data structure with window parameters
+  * @param  data - data structure with RLC device parameters
+  * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
+  */
 int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Action value_action)
 {
 	  pFunction JumpToApplication;
@@ -993,7 +1223,7 @@ int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Action valu
 	
 		if(USB_ON())
 		{
-			//enableUSB_PullUp(0);
+			//RLCDEV_EnableUSB_PullUp(0);
 			USBD_Stop(&hUsbDeviceFS);
 			USBD_DeInit(&hUsbDeviceFS);
 			
@@ -1019,68 +1249,4 @@ int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Action valu
 		DrawLine(0,36,83,36);
 		SetWindow(wnd);
 		return 1;
-}
-
-int SetMenuWindow(pWindow wnd, pData data, Action item_action, Action action)
-{
-	char title[10] = "Настройки";
-	String MenuTitle = {0,9,AlignCenter,font6x8,(const char*)title,NotInverted};
-	
-	const char* Items[7] = {"Режим","Параметры","Калибровка","Батарея","Дисплей","Обновление ПО","Выход"};
-	uint8_t ItemsQuantity = 7;
-
-	if(item_action == Next)
-	{
-			if(++data->current_item >= ItemsQuantity)
-			{
-					data->current_item = 0;
-			}
-  }
-	if(item_action == Prev)
-	{
-			if(--data->current_item > 128)
-			{
-					data->current_item = ItemsQuantity-1;
-			}
-	}
-	
-	for(uint8_t i = 0;(i < ItemsQuantity)&&(i < 3);i++)
-	{
-		if(data->current_item < 3)
-		{
-			String item = {5,19+9*i,AlignLeft,font6x8,Items[i],(i == data->current_item)?(Inverted):(NotInverted)};
-			wnd->strings[i] = item;
-	  }
-		else
-		{
-			String item =	{5,19+9*i,AlignLeft,font6x8,Items[data->current_item+i-2],(i == 2)?(Inverted):(NotInverted)};
-			wnd->strings[i] = item;
-		}
-	}	
-	
-	wnd->strings[3] = MenuTitle;
-	wnd->StringsQuantity = 4;
-  SetWindow(wnd);
-	
-	return 0;
-}
-
-void WindowsInit()
-{
-	DisplayMainWnd.callback = &DisplayMainWindow;
-	DisplaySecondWnd.callback = &DisplaySecondWindow;
-	
-	DisplayMainWnd.next = &DisplaySecondWnd; DisplayMainWnd.prev = &DisplaySecondWnd;
-	DisplaySecondWnd.next = &DisplayMainWnd; DisplaySecondWnd.prev = &DisplayMainWnd;
-	
-	MenuWnd.callback = &SetMenuWindow;
-	
-	SetupWnds[0].callback = &SetupModeWindow;
-	SetupWnds[1].callback = &SetupParametersWindow;
-	SetupWnds[2].callback = &CalibrationWindow;
-	SetupWnds[3].callback = &SetBatteryStateWindow;
-	SetupWnds[4].callback = &SetupDisplayWindow;
-	SetupWnds[5].callback = &UpdateFirmwareWindow;
-	
-	CurrentWnd = &DisplayMainWnd;
 }
