@@ -170,12 +170,12 @@ int main(void)
 			
 			if(averageCntr < 16)
 			{
-				if(dataType == VoltageData)
+				if(dataType == VoltageData) // analyze test device voltage
 				{
 					RLC_AnalyzeInputData(ADC_data, NUM_SAMPLES, RLC_GetFrequencyIndex(), &volt_adc_ampl, &VData);
 					memset(ADC_data,0, sizeof(ADC_data));
 				}
-				if(dataType == CurrentData)
+				if(dataType == CurrentData) // analyze test device current
 				{
 					RLC_AnalyzeInputData(ADC_data, NUM_SAMPLES, RLC_GetFrequencyIndex(), &curr_adc_ampl, &IData);
 					memset(ADC_data, 0, sizeof(ADC_data));
@@ -223,6 +223,19 @@ int main(void)
 				
 				ZData_avr = CplxDiv(VData_avr, IData_avr);
 				
+				// update measure parameters to optimal Vdata/Idata ratio 
+				fi_avr = atanf(VData_avr.Im/VData_avr.Re) - atanf(IData_avr.Im/IData_avr.Re);
+				if(fi_avr > M_PI/2)
+				{
+					fi_avr -= M_PI;
+				}
+				else if(fi_avr < - M_PI/2)
+				{
+					fi_avr += M_PI;
+				}
+				RLC_SetParameters(volt_adc_ampl, curr_adc_ampl, fi_avr);
+				
+				// apply calibration
 				if(calibrationValues.isCalibrated == 1 && !rlcData.is_calibration_started)
 				{
 					ComplexNumber nom, denom;
@@ -232,21 +245,22 @@ int main(void)
 					ZData_avr = CplxMul(nom, calibrationValues.Zo[RLC_GetFrequencyIndex()]);
 				}
 				
+				// correct phase value to -M_PI/2...M_PI/2 range
 				Zmag_avr = CplxMag(ZData_avr);
 				fi_avr = atanf(ZData_avr.Im/ZData_avr.Re);
 				
 				ZData_avr.Re = Zmag_avr*cosf(fi_avr);
 				ZData_avr.Im = Zmag_avr*sinf(fi_avr);
 				
+				// set output test device parameters to display
 				rlcData.R = ZData_avr.Re;
 				rlcData.X = ZData_avr.Im;
-				rlcData.Z = Zmag_avr;//CplxMag(ZData_avr);
+				rlcData.Z = Zmag_avr;
 				rlcData.Ur = (float)curr_adc_ampl*3.3f/65536;
 				rlcData.Ux = (float)volt_adc_ampl*3.3f/65536;
-				rlcData.fi = fi_avr;//atanf(ZData_avr.Im/ZData_avr.Re);
-				
-				RLC_SetParameters(volt_adc_ampl, curr_adc_ampl, rlcData.fi);
+				rlcData.fi = fi_avr;
 			
+				// reset averaging variables
 				VData_avr.Re = 0;
 				VData_avr.Im = 0;
 				

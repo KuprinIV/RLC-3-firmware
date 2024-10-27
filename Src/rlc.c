@@ -573,6 +573,7 @@ static uint8_t getOptimalR(float ratio)
   */
 static void updateMeasureParams()
 {
+	// check is RLC measure parameters updated
 	if(mParams.isParamsUpdated != 0)
 	{
 		rlcStabilzation.stabCount = 0;
@@ -611,6 +612,7 @@ static void updateMeasureParams()
 		
 		mParams.isParamsUpdated = 0; //reset flag
 	}
+	// check RLC measure parameters stability
 	if(rlcStabilzation.isStable == 0)
 	{
 		if(rlcStabilzation.stabCount < 5)

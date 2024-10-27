@@ -204,6 +204,9 @@ void USB_LP_CAN1_RX0_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+/**
+* @brief This function handles ADC1 interrupts. ADC1 injected channels scans battery parameters (voltage, charge current and temperature)
+*/
 void ADC1_IRQHandler(void)
 {
 	if(ADC1->SR & ADC_SR_JEOC)
@@ -213,6 +216,10 @@ void ADC1_IRQHandler(void)
 	}
 }
 
+/**
+* @brief This function handles TIM2 interrupts. TIM2 channel 3 output is used to switch ADC input to the test device to measure voltage data
+* or to the sense resistor to measure current data. TIM2 channel 4 interrupt is used to generate display redraw event
+*/
 void TIM2_IRQHandler(void)
 {
 	if(TIM2->SR & TIM_SR_CC3IF)
@@ -239,6 +246,10 @@ void TIM2_IRQHandler(void)
 	}
 }
 
+/**
+* @brief This function handles TIM3 interrupts. TIM3 update interrupt is used to get external ADC sample data. 
+* Sampling frequency is 250 kHz
+*/
 void TIM3_IRQHandler(void)
 {
 	static uint16_t index;
@@ -279,6 +290,9 @@ void TIM3_IRQHandler(void)
 	}
 }
 
+/**
+* @brief This function handles DMA1 channel 1 interrupts. This DMA channel is used to get data from internal ADC
+*/
 void DMA1_Channel1_IRQHandler(void)
 {
 	if(DMA1->ISR & DMA_ISR_TCIF1)
@@ -289,6 +303,9 @@ void DMA1_Channel1_IRQHandler(void)
 	}
 }
 
+/**
+* @brief This function handles EXTI pin 3 interrupts. This GPIOA pin 3 is used to detect USB plug/unplug event
+*/
 void EXTI3_IRQHandler(void)
 {
 	if(EXTI->PR & EXTI_PR_PR3)
