@@ -10,15 +10,16 @@ void goToPrevWindowOrItem(void);
 void confirmWindowOrItem(void);
 void refreshWindow(void);
 
-int DisplayMainWindow(pWindow wnd, pData data,Action item_action, Action value_action);
-int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Action value_action);
+static int DisplayMainWindow(pWindow wnd, pData data,Action item_action, Action value_action);
+static int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Action value_action);
 int SetMenuWindow(pWindow wnd, pData data, Action item_action, Action action);
 
-int SetupModeWindow(pWindow wnd, pData data,Action item_action, Action value_action);
-int SetupParametersWindow(pWindow wnd, pData data, Action item_action, Action value_action);
-int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action);
-int SetBatteryStateWindow(pWindow wnd, pData data, Action item_action, Action action);
-int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action action);
-int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Action value_action);
+static int SetupModeWindow(pWindow wnd, pData data,Action item_action, Action value_action);
+static int SetupParametersWindow(pWindow wnd, pData data, Action item_action, Action value_action);
+static int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action);
+static int SetBatteryStateWindow(pWindow wnd, pData data, Action item_action, Action action);
+static int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action action);
+static int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Action value_action);
+static int FirmwareVersionWindow(pWindow wnd, pData data,Action item_action, Action value_action);
 
 #endif

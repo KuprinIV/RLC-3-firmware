@@ -14,9 +14,9 @@ static Window DisplayMainWnd;
 static Window DisplaySecondWnd;
 static pWindow CurrentWnd;
 static Window MenuWnd;
-static Window SetupWnds[6];
+static Window SetupWnds[7];
 
-// current settings depth level
+// current settings menu depth level
 static uint8_t level = 0;
 
 /**
@@ -40,6 +40,7 @@ void WindowsInit()
 	SetupWnds[3].callback = &SetBatteryStateWindow;
 	SetupWnds[4].callback = &SetupDisplayWindow;
 	SetupWnds[5].callback = &UpdateFirmwareWindow;
+	SetupWnds[6].callback = &FirmwareVersionWindow;
 	
 	CurrentWnd = &DisplayMainWnd;
 }
@@ -110,7 +111,7 @@ void confirmWindowOrItem(void)
 			break;
 
 		case 1:
-			if(rlcData.current_item == 6)
+			if(rlcData.current_item == 7)
 			{
 					CurrentWnd = CurrentWnd->prev;
 					CurrentWnd->callback(CurrentWnd, &rlcData, NoAction, NoAction);
@@ -155,9 +156,10 @@ void refreshWindow(void)
   * @param  wnd - data structure with window parameters
   * @param  data - data structure with RLC device parameters
   * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @param  value_action: NoAction - do nothing, Next - increase current item value, Prev - decrease current item value
   * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
   */
-int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_action)
+static int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_action)
 {
     char param_str[14] = {0}, r_str[14] = {0}, x_str[14] = {0}, qd_str[14] = {0}, menu_str[13] = "    Меню    ";
 		const char* Rsp[2] = {"Rs","Rp"};
@@ -394,11 +396,12 @@ int DisplayMainWindow(pWindow wnd, pData data, Action item_action, Action value_
   * @param  wnd - data structure with window parameters
   * @param  data - data structure with RLC device parameters
   * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @param  value_action: NoAction - do nothing, Next - increase current item value, Prev - decrease current item value
   * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
   */
-int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Action value_action)
+static int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Action value_action)
 {
-	char Ux_str[14] = {0}, r_str[14] = {0}, Ur_str[14] = {0}, fi_str[14] = {0};
+	char Ux_str[14] = {0}, r_str[14] = {0}, Ur_str[14] = {0}, fi_str[14] = {0}, params_str[14] = {0};
 	
 	if(data->Z < 1)
 	{
@@ -428,26 +431,37 @@ int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Action value
 	{
 		sprintf(r_str, "Z = %0.3f МОм", data->Z/1e6);
 	}
-	else 
+	else if(data->Z >= 1e7 && data->Z < 1e8)
 	{
 		sprintf(r_str, "Z = %0.2f МОм", data->Z/1e6);
+	}
+	else if(data->Z >= 1e8 && data->Z < 1e9)
+	{
+		sprintf(r_str, "Z = %0.1f МОм", data->Z/1e6);
+	}
+	else 
+	{
+		sprintf(r_str, "Z = %0.1f ГОм", data->Z/1e9);
 	}
 	
 	sprintf(Ur_str, "Ur = %0.3fВ", data->Ur);
 	sprintf(Ux_str, "Ux = %0.3fВ", data->Ux);
 	sprintf(fi_str, "fi = %0.2f°", data->fi*180.0f/M_PI);
+	sprintf(params_str, "RFG = %d%d%d", data->param_vals->R_sense, data->param_vals->testSignalFreq, data->param_vals->uGain);
 	
-	String str1 = {0,9,AlignCenter,font6x8,(const char*)r_str,NotInverted};
-	String str2 = {0,18,AlignCenter,font6x8,(const char*)Ur_str,NotInverted};
-	String str3 = {0,27,AlignCenter,font6x8,(const char*)Ux_str,NotInverted};
+	String str1 = {0,11,AlignCenter,font6x8,(const char*)r_str,NotInverted};
+	String str2 = {0,20,AlignCenter,font6x8,(const char*)Ur_str,NotInverted};
+	String str3 = {0,29,AlignCenter,font6x8,(const char*)Ux_str,NotInverted};
 	String str4 = {0,38,AlignCenter,font6x8,(const char*)fi_str,NotInverted};
+	String str5 = {10,2,AlignLeft,font6x8,(const char*)params_str,NotInverted};
 	
 	
 	wnd->strings[0] = str1;
 	wnd->strings[1] = str2;
 	wnd->strings[2] = str3;
 	wnd->strings[3] = str4;
-	wnd->StringsQuantity = 4;	
+	wnd->strings[4] = str5;
+	wnd->StringsQuantity = 5;	
 			
 	SetWindow(wnd);
 	return 1;
@@ -458,15 +472,16 @@ int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Action value
   * @param  wnd - data structure with window parameters
   * @param  data - data structure with RLC device parameters
   * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @param  value_action: NoAction - do nothing, Next - increase current item value, Prev - decrease current item value
   * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
   */
-int SetMenuWindow(pWindow wnd, pData data, Action item_action, Action action)
+static int SetMenuWindow(pWindow wnd, pData data, Action item_action, Action action)
 {
 	char title[10] = "Настройки";
 	String MenuTitle = {0,9,AlignCenter,font6x8,(const char*)title,NotInverted};
 	
-	const char* Items[7] = {"Режим","Параметры","Калибровка","Батарея","Дисплей","Обновление ПО","Выход"};
-	uint8_t ItemsQuantity = 7;
+	const char* Items[8] = {"Режим","Параметры","Калибровка","Батарея","Дисплей","Обновление ПО","Версия ПО","Выход"};
+	uint8_t ItemsQuantity = 8;
 
 	if(item_action == Next)
 	{
@@ -509,9 +524,10 @@ int SetMenuWindow(pWindow wnd, pData data, Action item_action, Action action)
   * @param  wnd - data structure with window parameters
   * @param  data - data structure with RLC device parameters
   * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @param  value_action: NoAction - do nothing, Next - increase current item value, Prev - decrease current item value
   * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
   */
-int SetupModeWindow(pWindow wnd, pData data,Action item_action, Action value_action)
+static int SetupModeWindow(pWindow wnd, pData data,Action item_action, Action value_action)
 {
 	  static uint8_t mode_current_index;
 	
@@ -599,9 +615,10 @@ int SetupModeWindow(pWindow wnd, pData data,Action item_action, Action value_act
   * @param  wnd - data structure with window parameters
   * @param  data - data structure with RLC device parameters
   * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @param  value_action: NoAction - do nothing, Next - increase current item value, Prev - decrease current item value
   * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
   */
-int SetupParametersWindow(pWindow wnd, pData data, Action item_action, Action value_action)
+static int SetupParametersWindow(pWindow wnd, pData data, Action item_action, Action value_action)
 {
 		static uint8_t param_current_index;
 		uint8_t param_current_index_limit = 3;
@@ -781,9 +798,10 @@ int SetupParametersWindow(pWindow wnd, pData data, Action item_action, Action va
   * @param  wnd - data structure with window parameters
   * @param  data - data structure with RLC device parameters
   * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @param  value_action: NoAction - do nothing, Next - increase current item value, Prev - decrease current item value
   * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
   */
-int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action)
+static int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action)
 {
 	static uint8_t freqIndex, dataIndex, isFirst, calibrationType, isChecked, isEnded;
 	static CalibrationVals tempCalVals;
@@ -1011,9 +1029,10 @@ int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action
   * @param  wnd - data structure with window parameters
   * @param  data - data structure with RLC device parameters
   * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @param  value_action: NoAction - do nothing, Next - increase current item value, Prev - decrease current item value
   * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
   */
-int SetBatteryStateWindow(pWindow wnd, pData data, Action item_action, Action action)
+static int SetBatteryStateWindow(pWindow wnd, pData data, Action item_action, Action action)
 {
     char volt_str[10] = {0}, temp_str[11] = {0}, i_str[11] = {0};
     if(item_action == NoAction)
@@ -1063,9 +1082,10 @@ int SetBatteryStateWindow(pWindow wnd, pData data, Action item_action, Action ac
   * @param  wnd - data structure with window parameters
   * @param  data - data structure with RLC device parameters
   * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @param  value_action: NoAction - do nothing, Next - increase current item value, Prev - decrease current item value
   * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
   */
-int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action value_action)
+static int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action value_action)
 {
 		static uint8_t display_current_index;
 	
@@ -1209,9 +1229,10 @@ int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action value
   * @param  wnd - data structure with window parameters
   * @param  data - data structure with RLC device parameters
   * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @param  value_action: NoAction - do nothing, Next - increase current item value, Prev - decrease current item value
   * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
   */
-int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Action value_action)
+static int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Action value_action)
 {
 	  pFunction JumpToApplication;
 		uint32_t JumpAddress = 0;
@@ -1249,4 +1270,41 @@ int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Action valu
 		DrawLine(0,36,83,36);
 		SetWindow(wnd);
 		return 1;
+}
+
+/**
+  * @brief  Callback function for drawing firmware version window
+  * @param  wnd - data structure with window parameters
+  * @param  data - data structure with RLC device parameters
+  * @param  item_action: NoAction - do nothing, Next - go to the next item, Prev - go to previous item
+  * @param  value_action: NoAction - do nothing, Next - increase current item value, Prev - decrease current item value
+  * @retval 0 - after window drawing go to previous window, 1 - after window drawing stay in it
+  */
+static int FirmwareVersionWindow(pWindow wnd, pData data, Action item_action, Action value_action)
+{
+	char fw_version_str[15] = {0};
+	if(item_action == NoAction)
+	{
+		 sprintf(fw_version_str,"Версия ПО: %s",FIRMWARE_VERSION_STR);
+		 String str1 = {0,9,AlignCenter,font6x8,(const char*)fw_version_str,NotInverted}; // firmware version
+		 String str2 = {0,18,AlignCenter,font6x8,"Дата релиза:",NotInverted}; // release date
+		 String str3 = {0,27,AlignCenter,font6x8,RELEASE_DATE_STR,NotInverted};
+		 String str4 = {0,38,AlignCenter,font6x8,"OK",Inverted};
+
+		 wnd->strings[0] = str1;
+		 wnd->strings[1] = str2;
+		 wnd->strings[2] = str3;
+		 wnd->strings[3] = str4;
+
+		 wnd->StringsQuantity = 4;
+
+		 
+		 DrawLine(0,36,83,36);
+		 SetWindow(wnd);
+		 return 1;
+	}
+	else
+	{
+			return 0;
+	}
 }

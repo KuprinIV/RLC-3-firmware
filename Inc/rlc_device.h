@@ -6,6 +6,8 @@
 //#define USE_INTERNAL_ADC 1
 
 #define USBD_DFU_BOOT_DEFAULT_ADD 0x0800A000
+#define FIRMWARE_VERSION_STR			"1.1"
+#define RELEASE_DATE_STR					"29.10.2024"
 
 typedef  void (*pFunction)(void);
 
