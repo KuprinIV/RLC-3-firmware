@@ -33,7 +33,6 @@ void RLCDEV_GetBatteryParameters(pData, uint8_t*);
 void RLCDEV_StartADCRegularConv(void);
 void RLCDEV_StopADCRegularConv(void);
 void RLCDEV_StartADCInjectedConv(void);
-void RLCDEV_ReadDisplaySettings(pData);
 
 void RLCDEV_AD7980_GetData(void);
 

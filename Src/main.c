@@ -151,8 +151,6 @@ int main(void)
 	ADC_Init();
 	
 	RLC_Init();
-	RLC_ReadCalibrationDataFromFlash();
-	RLCDEV_ReadDisplaySettings(&rlcData);
 
   /* USER CODE END 2 */
 
@@ -236,7 +234,7 @@ int main(void)
 				RLC_SetParameters(volt_adc_ampl, curr_adc_ampl, fi_avr);
 				
 				// apply calibration
-				if(calibrationValues.isCalibrated == 1 && !rlcData.is_calibration_started)
+				if(calibrationValues.isProbeCalibrated == 1 && !rlcData.is_calibration_started)
 				{
 					ComplexNumber nom, denom;
 					nom = CplxDif(ZData_avr, calibrationValues.Zc[RLC_GetFrequencyIndex()]);
@@ -394,7 +392,7 @@ int main(void)
 					pwrCntr = 0;
 				}
 				
-				if(light_cnt < (rlcData.display_vals[1]<<4)) //disable display light through 5 s after last push button 
+				if(light_cnt < (rlcData.display_settings.light_time<<4)) //disable display light through 5 s after last push button 
 				{
 					 light_cnt++;
 				}

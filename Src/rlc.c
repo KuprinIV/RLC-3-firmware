@@ -15,9 +15,9 @@ static uint8_t getOptimalR(float ratio);
 static void updateMeasureParams(void);
 
 static measureParams mParams = {1,1,0,0x0F,1,0}, mParams_Prev = {1,1,0,0x0F,1,0};
-Data rlcData = {&mParams,{50,10,4},{4.2f,250.0f,25.0f},0,0,0,0,0,0,0,0,0};
+Data rlcData = {&mParams,{0,50,10,4},{4.2f,250.0f,25.0f},0,0,0,0,0,0,0,0};
 Stabilization rlcStabilzation = {0, 0, 20};
-CalibrationVals calibrationValues = {{{0, 0},{0, 0},{0, 0},{0, 0}}, {{0, 0},{0, 0},{0, 0},{0, 0}}, 0};
+CalibrationVals calibrationValues = {{{0, 0},{0, 0},{0, 0},{0, 0}}, {{0, 0},{0, 0},{0, 0},{0, 0}}, 0, {0,50,10,4}, 0, {10.0f, 100.0f, 1000.0f, 10000.0f, 100000.0f}};
 
 static float freqList[4] = {122.0703125f, 976.5625f, 7812.5f, 62500.0f}, rsList[5] = {9.95f, 100.15f, 998.0f, 9980.0f, 99926.0f}, gainList[4] = {2.0f, 5.0f, 13.2f, 34.0f};
 
@@ -28,6 +28,8 @@ static float freqList[4] = {122.0703125f, 976.5625f, 7812.5f, 62500.0f}, rsList[
   */
 void RLC_Init(void)
 {
+	// read calibration data and settings from flash memory
+	RLC_ReadCalibrationDataFromFlash();
 	// set default measure parameters
 	updateMeasureParams();
 }
@@ -334,12 +336,14 @@ uint8_t RLC_GetMeasureType(void)
   */
 void RLC_WriteCalibrationDataToFlash()
 {
-	uint8_t integer_data[sizeof(calibrationValues)+4] = {0};
-	memcpy(integer_data,(uint32_t*)CALIBRATION_DATA_ADDR, sizeof(integer_data));
+	uint32_t integer_data[sizeof(calibrationValues)/sizeof(uint32_t)] = {0};
 	FLASH_EraseInitTypeDef EraseInitStruct;
-	
 	uint32_t PageError = 0;
+	
+	// copy data from flash memory
+	memcpy(integer_data,(uint32_t*)CALIBRATION_DATA_ADDR, sizeof(integer_data));
 
+	// erase flash memory page before writing
 	HAL_FLASH_Unlock();
 	EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES;
   EraseInitStruct.PageAddress = CALIBRATION_DATA_ADDR;
@@ -354,14 +358,14 @@ void RLC_WriteCalibrationDataToFlash()
 	HAL_Delay(100);
 	
 	HAL_FLASH_Unlock();
-	memcpy(&integer_data, &(calibrationValues), sizeof(calibrationValues));
-	integer_data[sizeof(calibrationValues)+1] = rlcData.display_vals[0];
-	integer_data[sizeof(calibrationValues)+2] = rlcData.display_vals[1];
-	integer_data[sizeof(calibrationValues)+3] = rlcData.display_vals[2];
+	// update display settings in calibration values structure
+	memcpy(&calibrationValues.display_settings, &rlcData.display_settings, sizeof(DisplaySettings));
 	
-	for(uint8_t i = 0; i < sizeof(calibrationValues)+4; i+=4)
+	// write calibration data and settings into flash memory
+	memcpy(&integer_data, &(calibrationValues), sizeof(calibrationValues));
+	for(uint8_t i = 0; i < sizeof(calibrationValues)/sizeof(uint32_t); i++)
 	{
-		HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, CALIBRATION_DATA_ADDR + i, *(uint32_t*)(integer_data+i));
+		HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, CALIBRATION_DATA_ADDR + 4*i, integer_data[i]);
 	}
 	
 	HAL_FLASH_Lock();
@@ -375,10 +379,32 @@ void RLC_WriteCalibrationDataToFlash()
 void RLC_ReadCalibrationDataFromFlash()
 {
 	memcpy(&(calibrationValues),(uint32_t*)CALIBRATION_DATA_ADDR, sizeof(calibrationValues));
-	if(calibrationValues.isCalibrated == 0xFF)
+	// check display settings
+	if(calibrationValues.display_settings.brightness != 0xFF)
 	{
-		memset(&calibrationValues, 0, sizeof(calibrationValues));
+		rlcData.display_settings.brightness = calibrationValues.display_settings.brightness;
+		//set brightness
+		TIM4->CCR2 = rlcData.display_settings.brightness/5;
 	}
+	
+	if(calibrationValues.display_settings.light_time != 0xFF)
+	{
+		rlcData.display_settings.light_time = calibrationValues.display_settings.light_time;
+	}
+	
+	if(calibrationValues.display_settings.contrast != 0xFF)
+	{
+		rlcData.display_settings.contrast = calibrationValues.display_settings.contrast;
+		//set contrast
+		Display_SetContrast(rlcData.display_settings.contrast);
+	}
+	
+	// check Rsense list
+	if(calibrationValues.isRsenseCalibrated == 1)
+	{
+		memcpy(rsList, calibrationValues.Rsense_list, 5);
+	}
+	
 }
 
 /**

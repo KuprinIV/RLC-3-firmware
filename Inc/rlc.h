@@ -30,8 +30,16 @@ typedef struct
 
 typedef struct
 {
+	uint8_t reserved;
+	uint8_t brightness;
+	uint8_t light_time;
+	uint8_t contrast;
+}DisplaySettings;
+
+typedef struct
+{
     pMeasureParams param_vals;
-    uint8_t display_vals[3];
+    DisplaySettings display_settings;
     float batADC_data[3];
     float R;
     float X;
@@ -39,7 +47,6 @@ typedef struct
 		float Ur;
 		float Ux;
 		float fi;
-	  uint8_t current_item;
 		uint8_t rsrp;
 		uint8_t is_calibration_started;
 }Data,*pData;
@@ -57,11 +64,14 @@ typedef struct
 	uint8_t stabCountLimit;
 }Stabilization;
 
-typedef struct 
+typedef struct
 {
 	ComplexNumber Zo[4];
 	ComplexNumber Zc[4];
-	uint8_t isCalibrated;	
+	uint32_t isProbeCalibrated;
+	DisplaySettings display_settings;
+	uint32_t isRsenseCalibrated;
+	float Rsense_list[5];
 }CalibrationVals;
 
 void RLC_Init(void);

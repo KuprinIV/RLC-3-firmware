@@ -41,6 +41,8 @@ typedef struct Window
   int (*callback)(struct Window* ,pData , Action ,Action );
   struct Window* next;
   struct Window* prev;
+	struct Window* top;
+  struct Window* bottom;
 }Window,*pWindow;
 
 // LCD control

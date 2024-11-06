@@ -158,27 +158,6 @@ void RLCDEV_StartADCInjectedConv()
 }
 
 /**
-  * @brief  RLC device read LCD settings from MCU flash memory
-	* @param  None
-  * @retval None
-  */
-void RLCDEV_ReadDisplaySettings(pData data)
-{
-	uint32_t displaySettings = *((uint32_t*)(CALIBRATION_DATA_ADDR+sizeof(calibrationValues)+1));
-	if(displaySettings != 0xFFFFFFFF && data != NULL)
-	{
-		data->display_vals[2] = (uint8_t)((displaySettings>>16)&0xFF);
-		data->display_vals[1] = (uint8_t)((displaySettings>>8)&0xFF);
-		data->display_vals[0] = (uint8_t)(displaySettings&0xFF);
-		
-		//set brightness
-		TIM4->CCR2 = data->display_vals[0]/5;
-		//set contrast
-		Display_SetContrast(data->display_vals[2]);
-	}
-}
-
-/**
   * @brief  RLC device get data from external ADC AD7980
 	* @param  None
   * @retval None

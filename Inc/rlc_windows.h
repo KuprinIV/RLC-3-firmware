@@ -16,10 +16,12 @@ int SetMenuWindow(pWindow wnd, pData data, Action item_action, Action action);
 
 static int SetupModeWindow(pWindow wnd, pData data,Action item_action, Action value_action);
 static int SetupParametersWindow(pWindow wnd, pData data, Action item_action, Action value_action);
-static int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action action);
-static int SetBatteryStateWindow(pWindow wnd, pData data, Action item_action, Action action);
-static int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action action);
+static int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action value_action);
+static int SetBatteryStateWindow(pWindow wnd, pData data, Action item_action, Action value_action);
+static int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Action value_action);
 static int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Action value_action);
 static int FirmwareVersionWindow(pWindow wnd, pData data,Action item_action, Action value_action);
+static int CalibrationProbesWindow(pWindow wnd, pData data, Action item_action, Action value_action);
+static int CalibrationRsenseWindow(pWindow wnd, pData data, Action item_action, Action value_action);
 
 #endif
