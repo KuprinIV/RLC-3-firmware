@@ -1186,24 +1186,24 @@ static int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Acti
   */
 static int FirmwareVersionWindow(pWindow wnd, pData data, Action item_action, Action value_action)
 {
-	char fw_version_str[12] = {0};
+	char fw_version_str[15] = {0};
+	char release_date_str[15] = {0};
 	if(item_action != NoAction)
 	{
 		return 1; // return to the settings menu window
 	} 
 	// show firmware version and release date
 	sprintf(fw_version_str,"Версия ПО: %s",FIRMWARE_VERSION_STR);
-	String str1 = {0,9,AlignCenter,font6x8,(const char*)fw_version_str,NotInverted}; // firmware version
-	String str2 = {0,18,AlignCenter,font6x8,"Дата релиза:",NotInverted}; // release date
-	String str3 = {0,27,AlignCenter,font6x8,RELEASE_DATE_STR,NotInverted};
-	String str4 = {0,38,AlignCenter,font6x8,"OK",Inverted};
+	sprintf(release_date_str,"Дата: %s",RELEASE_DATE_STR);
+	String str1 = {1,9,AlignLeft,font6x8,(const char*)fw_version_str,NotInverted}; // firmware version
+	String str2 = {1,18,AlignLeft,font6x8,(const char*)release_date_str,NotInverted}; // release date
+	String str3 = {0,38,AlignCenter,font6x8,"OK",Inverted};
 
 	wnd->strings[0] = str1;
 	wnd->strings[1] = str2;
 	wnd->strings[2] = str3;
-	wnd->strings[3] = str4;
 
-	wnd->StringsQuantity = 4;
+	wnd->StringsQuantity = 3;
 
 
 	DrawLine(0,36,83,36);
@@ -1461,6 +1461,9 @@ static int CalibrationRsenseWindow(pWindow wnd, pData data, Action item_action, 
 	static uint8_t is_calibration_ended;
 	static uint8_t is_measure_ready;
 	static uint8_t data_index;
+	static uint8_t window_type;
+	static uint8_t is_confirmed;
+	static uint8_t exit_flag;
 	
 	float r_test_default[5] = {10.0f, 100.0f, 1000.0f, 10000.0f, 100000.0f};
 	float r_test_upper_limit[5] = {10.5f, 105.0f, 1050.0f, 10500.0f, 105000.0f};
@@ -1478,80 +1481,132 @@ static int CalibrationRsenseWindow(pWindow wnd, pData data, Action item_action, 
 	if(!isRtestInited)
 	{
 		isRtestInited = 1;
-		// set default R test values
 		for(uint8_t i = 0; i < 5; i++)
 		{
-			r_test[i] = r_test_default[i];
-		}
-		// set accumulated measure values to zero
-		for(uint8_t i = 0; i < 5; i++)
-		{
+			// set accumulated measure values to zero
 			r_meas_vals[i] = 0.0f;
+			// set default R test values
+			r_test[i] = r_test_default[i];
 		}
 		RLC_SetAutoSetParams(0); // disable autoset params
 		RLC_SetMeasureType(1); // set measure type R
+		is_confirmed = 1; // choose Ok by default
 	}
 	
 	if(item_action == Next)
 	{
-		if(current_item_index < 1)
+		switch(window_type)
 		{
-			current_item_index++;
-		}
-		else
-		{
-			if(is_measure_ready) // Rtest measure is over
-			{
-				is_measure_ready = 0;
-				if(current_rsense_index < 4) // go to next Rsense value
+			case 0: // show connect correct test resistor value message 
+			case 2: // show incorrect test resistor message
+				if(is_confirmed)
 				{
-					current_rsense_index++;
 					current_item_index = 0;
+					window_type = 1; // show setting Rtest and measure result window
 				}
 				else
 				{
-					is_calibration_ended = 1;
+					exit_flag = 1;
 				}
-			}
-			else if(!is_calibration && !is_calibration_ended) // if Rsense meausre hasn't started yet and alibration isn't finished, start it
-			{
-				is_calibration = 1;
-			}
-			else // cancel calibration or save data after calibration finish
-			{
-				current_item_index = 0;
-				current_rsense_index = 0;
-				isRtestInited = 0;
-				is_calibration = 0;
+				is_confirmed = 1; // choose Ok by default
+				is_measure_ready = 0; // restart measure
+				break;
 				
-				// save Rsense values 
-				if(is_calibration_ended)
+			case 1: // show Rtest set value or Rsense real value
+				if(current_item_index < 1)
 				{
-					is_calibration_ended = 0;
-					RLC_WriteCalibrationDataToFlash();//write calibration data to flash
+					current_item_index++;
 				}
+				else
+				{
+					if(is_measure_ready) // Rtest measure is over
+					{
+						is_measure_ready = 0;
+						if(current_rsense_index < 4) // go to next Rsense value
+						{
+							current_rsense_index++;
+							window_type = 0; // show connect correct test resistor value message
+							current_item_index = 0;
+						}
+						else
+						{
+							is_calibration_ended = 1;
+						}
+					}
+					else if(!is_calibration && !is_calibration_ended) // if Rsense meausre hasn't started yet and alibration isn't finished, start it
+					{
+						is_calibration = 1;
+					}
+					else // cancel calibration or save data after calibration finish
+					{
+						exit_flag = 1;
+					}
+				}
+				break;
 				
-				RLC_SetAutoSetParams(1); // enable autoset params
-				RLC_SetMeasureType(0); // set measure type Auto
-				return 1;
+			default:
+				exit_flag = 1;
+				break;
+		}
+		
+		if(exit_flag == 1)
+		{
+			// reset function static variables
+			exit_flag = 0;
+			current_item_index = 0;
+			current_rsense_index = 0;
+			window_type = 0;
+			is_confirmed = 0;
+			isRtestInited = 0;
+			is_calibration = 0;
+			is_calibration_ended = 0;
+			data_index = 0;
+			is_measure_ready = 0;
+			
+			// save Rsense values 
+			if(is_calibration_ended)
+			{
+				is_calibration_ended = 0;
+				RLC_WriteCalibrationDataToFlash();//write calibration data to flash
 			}
+			
+			RLC_SetAutoSetParams(1); // enable autoset params
+			RLC_SetMeasureType(0); // set measure type Auto
+			return 1;
 		}
 	}
 	
-	if(current_item_index == 0) // change Rtest value
+	if(value_action == Next)
 	{
-		if(value_action == Next)
+		if(window_type == 0 || window_type == 2)
 		{
-			if(r_test[current_rsense_index] < r_test_upper_limit[current_rsense_index])
+			is_confirmed = (is_confirmed+1)&0x01;
+		}
+		else
+		{
+			if(current_item_index == 0) // change Rtest value
 			{
-				r_test[current_rsense_index] += r_test_steps[current_rsense_index];
+				if(r_test[current_rsense_index] < r_test_upper_limit[current_rsense_index])
+				{
+					r_test[current_rsense_index] += r_test_steps[current_rsense_index];
+				}
 			}
 		}
-		else if(value_action == Prev)
+	}
+	else if(value_action == Prev)
+	{
+		if(window_type == 0 || window_type == 2)
 		{
-			if(r_test[current_rsense_index] > r_test_lower_limit[current_rsense_index])
+			is_confirmed = (is_confirmed-1)&0x01;
+		}
+		else
+		{
+			if(current_item_index == 0) // change Rtest value
 			{
-				r_test[current_rsense_index] -= r_test_steps[current_rsense_index];
+				if(r_test[current_rsense_index] > r_test_lower_limit[current_rsense_index])
+				{
+					r_test[current_rsense_index] -= r_test_steps[current_rsense_index];
+				}
 			}
 		}
 	}
@@ -1590,7 +1645,16 @@ static int CalibrationRsenseWindow(pWindow wnd, pData data, Action item_action, 
 				{
 					data_index = 0;
 					r_meas_vals[current_rsense_index] /= averages_num;
-					r_meas_vals[current_rsense_index] = r_test[current_rsense_index]*RLC_GetRSenseValue()/r_meas_vals[current_rsense_index]; // get real Rsense value
+					// check is current connected Rtest correct
+					if((r_meas_vals[current_rsense_index] > 0.9f*r_test[current_rsense_index]) && (r_meas_vals[current_rsense_index] < 1.1f*r_test[current_rsense_index]))
+					{
+						window_type = 1;
+						r_meas_vals[current_rsense_index] = r_test[current_rsense_index]*RLC_GetRSenseValue()/r_meas_vals[current_rsense_index]; // get real Rsense value
+					}
+					else
+					{
+						window_type = 2;
+					}	
 					is_calibration = 0;
 					is_measure_ready = 1;
 				}
@@ -1605,34 +1669,69 @@ static int CalibrationRsenseWindow(pWindow wnd, pData data, Action item_action, 
 		}
 		else // show Rtest set value or Rsense real value
 		{
-			sprintf(r_test_lbl,"Rt,%s",r_test_lbl_suffix[current_rsense_index]);
-			sprintf(r_test_value_str,"%0.3f",r_test[current_rsense_index]/dividers[current_rsense_index]);
-			sprintf(r_sense_lbl,"Rs,%s",r_test_lbl_suffix[current_rsense_index]);
-			if(is_measure_ready)
+			if(window_type == 0)
 			{
-				sprintf(r_sense_value_str,"%0.3f",r_meas_vals[current_rsense_index]/dividers[current_rsense_index]);
+				sprintf(r_test_value_str,"%0.0f %s",r_test_default[current_rsense_index]/dividers[current_rsense_index], r_test_lbl_suffix[current_rsense_index]);
+				String str1 = {0,7,AlignCenter,font6x8,"Подключите",NotInverted};
+				String str2 = {0,16,AlignCenter,font6x8,"резистор",NotInverted};
+				String str3 = {0,25,AlignCenter,font6x8,(const char*)r_test_value_str,NotInverted};
+				String str4 = {15,38,AlignLeft,font6x8,"Ок", is_confirmed ? Inverted : NotInverted};
+				String str5 = {45,38,AlignLeft,font6x8,"Отмена", is_confirmed ? NotInverted : Inverted};
+				
+				wnd->strings[0] = str1;
+				wnd->strings[1] = str2;
+				wnd->strings[2] = str3;
+				wnd->strings[3] = str4;
+				wnd->strings[4] = str5;
+				
+				wnd->StringsQuantity = 5;
+			}
+			else if(window_type == 1)
+			{
+				sprintf(r_test_lbl,"Rt,%s",r_test_lbl_suffix[current_rsense_index]);
+				sprintf(r_test_value_str,"%0.3f",r_test[current_rsense_index]/dividers[current_rsense_index]);
+				sprintf(r_sense_lbl,"Rs,%s",r_test_lbl_suffix[current_rsense_index]);
+				if(is_measure_ready)
+				{
+					sprintf(r_sense_value_str,"%0.3f",r_meas_vals[current_rsense_index]/dividers[current_rsense_index]);
+				}
+				else
+				{
+					sprintf(r_sense_value_str,"---");
+				}
+				
+				String str1 = {1,9,AlignLeft,font6x8,(const char*)r_test_lbl,NotInverted};
+				String str2 = {0,9,AlignRight,font6x8,(const char*)r_test_value_str,(current_item_index == 0 ? Inverted : NotInverted)};
+				String str3 = {1,18,AlignLeft,font6x8,(const char*)r_sense_lbl,NotInverted};
+				String str4 = {0,18,AlignRight,font6x8,(const char*)r_sense_value_str,NotInverted};
+				String str5 = {0,38,AlignCenter,font6x8,(current_item_index == 1 ? (is_measure_ready ? "   Далее   " : "   Старт   ") : "-  Старт  +"),(current_item_index == 1 ? Inverted : NotInverted)};
+				
+				wnd->strings[0] = str1;
+				wnd->strings[1] = str2;
+				wnd->strings[2] = str3;
+				wnd->strings[3] = str4;
+				wnd->strings[4] = str5;
+				
+				wnd->StringsQuantity = 5;
 			}
 			else
 			{
-				sprintf(r_sense_value_str,"---");
+				String str1 = {0,7,AlignCenter,font6x8,"Подключен",NotInverted};
+				String str2 = {0,16,AlignCenter,font6x8,"неверный",NotInverted};
+				String str3 = {0,25,AlignCenter,font6x8,"резистор!",NotInverted};
+				String str4 = {10,38,AlignLeft,font6x8,"Повт.", is_confirmed ? Inverted : NotInverted};
+				String str5 = {45,38,AlignLeft,font6x8,"Отмена", is_confirmed ? NotInverted : Inverted};
+				
+				wnd->strings[0] = str1;
+				wnd->strings[1] = str2;
+				wnd->strings[2] = str3;
+				wnd->strings[3] = str4;
+				wnd->strings[4] = str5;
+				
+				wnd->StringsQuantity = 5;
 			}
-			
-			String str1 = {1,9,AlignLeft,font6x8,(const char*)r_test_lbl,NotInverted};
-			String str2 = {0,9,AlignRight,font6x8,(const char*)r_test_value_str,(current_item_index == 0 ? Inverted : NotInverted)};
-			String str3 = {1,18,AlignLeft,font6x8,(const char*)r_sense_lbl,NotInverted};
-			String str4 = {0,18,AlignRight,font6x8,(const char*)r_sense_value_str,NotInverted};
-			String str5 = {0,38,AlignCenter,font6x8,(current_item_index == 1 ? (is_measure_ready ? "   Далее   " : "   Старт   ") : "-  Старт  +"),(current_item_index == 1 ? Inverted : NotInverted)};
-			
-			wnd->strings[0] = str1;
-			wnd->strings[1] = str2;
-			wnd->strings[2] = str3;
-			wnd->strings[3] = str4;
-			wnd->strings[4] = str5;
-			
-			wnd->StringsQuantity = 5;
 		}
 	}
-		
 	
 	DrawLine(0,36,83,36);
 	SetWindow(wnd);

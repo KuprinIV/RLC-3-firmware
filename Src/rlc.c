@@ -19,7 +19,7 @@ Data rlcData = {&mParams,{0,50,10,4},{4.2f,250.0f,25.0f},0,0,0,0,0,0,0,0};
 Stabilization rlcStabilzation = {0, 0, 20};
 CalibrationVals calibrationValues = {{{0, 0},{0, 0},{0, 0},{0, 0}}, {{0, 0},{0, 0},{0, 0},{0, 0}}, 0, {0,50,10,4}, 0, {10.0f, 100.0f, 1000.0f, 10000.0f, 100000.0f}};
 
-static float freqList[4] = {122.0703125f, 976.5625f, 7812.5f, 62500.0f}, rsList[5] = {9.95f, 100.15f, 998.0f, 9980.0f, 99926.0f}, gainList[4] = {2.0f, 5.0f, 13.2f, 34.0f};
+static float freqList[4] = {122.0703125f, 976.5625f, 7812.5f, 62500.0f}, rsList[5] = {10.0f, 100.0f, 1000.0f, 10000.0f, 100000.0f}, gainList[4] = {2.0f, 5.0f, 13.2f, 34.0f};
 
 /**
   * @brief  Init RLC measurement
