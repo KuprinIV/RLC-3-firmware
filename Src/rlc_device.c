@@ -1,6 +1,8 @@
 #include "rlc_device.h"
 #include "nokia_5110_lib.h"
 
+//const uint32_t signature  __attribute__((section(".ARM.__at_0x0800F800"))) = 0x3DC23DC2;     // Compiler v5
+
 extern CalibrationVals calibrationValues;
 extern uint16_t ADC_data[NUM_SAMPLES];
 extern RLC_Events events;
