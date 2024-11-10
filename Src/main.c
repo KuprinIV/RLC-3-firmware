@@ -221,18 +221,6 @@ int main(void)
 				
 				ZData_avr = CplxDiv(VData_avr, IData_avr);
 				
-				// update measure parameters to optimal Vdata/Idata ratio 
-				fi_avr = atanf(VData_avr.Im/VData_avr.Re) - atanf(IData_avr.Im/IData_avr.Re);
-				if(fi_avr > M_PI/2)
-				{
-					fi_avr -= M_PI;
-				}
-				else if(fi_avr < - M_PI/2)
-				{
-					fi_avr += M_PI;
-				}
-				RLC_SetParameters(volt_adc_ampl, curr_adc_ampl, fi_avr);
-				
 				// apply calibration
 				if(calibrationValues.isProbeCalibrated == 1 && !rlcData.is_calibration_started)
 				{
@@ -249,6 +237,9 @@ int main(void)
 				
 				ZData_avr.Re = Zmag_avr*cosf(fi_avr);
 				ZData_avr.Im = Zmag_avr*sinf(fi_avr);
+				
+				// update measure parameters
+				RLC_SetParameters(volt_adc_ampl, curr_adc_ampl, fi_avr);
 				
 				// set output test device parameters to display
 				rlcData.R = ZData_avr.Re;
