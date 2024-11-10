@@ -1082,7 +1082,7 @@ void DFU_Leave(USBD_HandleTypeDef *pdev)
     /* DeInitilialize the MAL(Media Access Layer) */
     ((USBD_DFU_MediaTypeDef *)pdev->pUserData)->DeInit();
 		
-    GPIOB->ODR &= 0xFDFF;// // pull_up D+ disable
+    GPIOB->CRH &= 0xFFFFFF0F; // set PB9 to input (pull-up will be float)
     /* Generate system reset to allow jumping to the user code */
     NVIC_SystemReset();
    

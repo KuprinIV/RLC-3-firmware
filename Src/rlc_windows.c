@@ -482,13 +482,13 @@ static int DisplaySecondWindow(pWindow wnd, pData data,Action item_action, Actio
 	sprintf(Ur_str, "Ur = %0.3fÂ", data->Ur);
 	sprintf(Ux_str, "Ux = %0.3fÂ", data->Ux);
 	sprintf(fi_str, "fi = %0.2f°", data->fi*180.0f/M_PI);
-	sprintf(params_str, "RFG = %d%d%d", data->param_vals->R_sense, data->param_vals->testSignalFreq, data->param_vals->uGain);
+	sprintf(params_str, "%d%d%d", data->param_vals->R_sense, data->param_vals->testSignalFreq, data->param_vals->uGain);
 	
 	String str1 = {0,11,AlignCenter,font6x8,(const char*)r_str,NotInverted};
 	String str2 = {0,20,AlignCenter,font6x8,(const char*)Ur_str,NotInverted};
 	String str3 = {0,29,AlignCenter,font6x8,(const char*)Ux_str,NotInverted};
 	String str4 = {0,38,AlignCenter,font6x8,(const char*)fi_str,NotInverted};
-	String str5 = {10,2,AlignLeft,font6x8,(const char*)params_str,NotInverted};
+	String str5 = {0,2,AlignCenter,font6x8,(const char*)params_str,NotInverted};
 	
 	
 	wnd->strings[0] = str1;
@@ -890,12 +890,12 @@ static int CalibrationWindow(pWindow wnd, pData data, Action item_action, Action
 	{
 		if(current_item < 3)
 		{
-			String item = {5,5+9*i,AlignLeft,font6x8,Items[i],(i == current_item)?(Inverted):(NotInverted)};
+			String item = {5,9+9*i,AlignLeft,font6x8,Items[i],(i == current_item)?(Inverted):(NotInverted)};
 			wnd->strings[i] = item;
 	  }
 		else
 		{
-			String item =	{5,5+9*i,AlignLeft,font6x8,Items[current_item+i-2],(i == 2)?(Inverted):(NotInverted)};
+			String item =	{5,9+9*i,AlignLeft,font6x8,Items[current_item+i-2],(i == 2)?(Inverted):(NotInverted)};
 			wnd->strings[i] = item;
 		}
 	}	

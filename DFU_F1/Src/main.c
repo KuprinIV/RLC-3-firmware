@@ -64,7 +64,7 @@ static void MX_GPIO_Init(void);
 
 int main(void)
 {
-	SCB->VTOR = FLASH_BASE|0xA000;// vector table offset (use DFU bootloader)
+	SCB->VTOR = FLASH_BASE|0xB000;// vector table offset (use DFU bootloader)
   /* USER CODE BEGIN 1 */
   //pFunction JumpToApplication;
   //uint32_t JumpAddress;
