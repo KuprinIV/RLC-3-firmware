@@ -7,7 +7,7 @@
 
 #define USBD_DFU_BOOT_DEFAULT_ADD 0x0800A000
 #define FIRMWARE_VERSION_STR			"1.1"
-#define RELEASE_DATE_STR					"6.11.24"
+#define RELEASE_DATE_STR					"10.11.24"
 
 typedef  void (*pFunction)(void);
 
