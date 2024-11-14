@@ -94,7 +94,7 @@ static void SPI_Init(void);
 
 int main(void)
 {
-
+	SCB->VTOR = FLASH_BASE|0x4000;// vector table offset (use DFU bootloader)
   /* USER CODE BEGIN 1 */
 	uint8_t divider = 0, isPoweredOn = 0;
 	uint16_t light_cnt = 0;

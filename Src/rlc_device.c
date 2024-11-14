@@ -1,11 +1,11 @@
 #include "rlc_device.h"
 #include "nokia_5110_lib.h"
 
-//const uint32_t signature  __attribute__((section(".ARM.__at_0x0800F800"))) = 0x3DC23DC2;     // Compiler v5
-
 extern CalibrationVals calibrationValues;
 extern uint16_t ADC_data[NUM_SAMPLES];
 extern RLC_Events events;
+
+const uint32_t signature  __attribute__((section("dfu_signature"))) = DFU_SIGNATURE;     // Compiler v5
 
 /**
   * @brief  RLC device charger control
@@ -104,6 +104,29 @@ void RLCDEV_GetBatteryParameters(pData data, uint8_t* battery_percent)
 		// clear averaged ADC data
 		batADC_data[0] = batADC_data[1] = batADC_data[2] = 0;
 	}
+}
+
+/**
+  * @brief  RLC device reset DFU signature to enter into DFU bootloader
+	* @param  None
+  * @retval None
+  */
+void RLCDEV_ResetDfuSignature(void)
+{
+	FLASH_EraseInitTypeDef EraseInitStruct;
+	uint32_t PageError = 0;
+	
+	// erase flash memory page with DFU signature
+	HAL_FLASH_Unlock();
+	EraseInitStruct.TypeErase = FLASH_TYPEERASE_PAGES;
+  EraseInitStruct.PageAddress = DFU_SIGNATURE_ADDRESS;
+  EraseInitStruct.NbPages = 1;
+
+  if (HAL_FLASHEx_Erase(&EraseInitStruct, &PageError) != HAL_OK)
+	{
+		
+	}
+	HAL_FLASH_Lock();
 }
 
 /**
