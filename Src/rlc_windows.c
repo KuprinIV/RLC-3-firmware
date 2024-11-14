@@ -1138,9 +1138,6 @@ static int SetupDisplayWindow(pWindow wnd, pData data, Action item_action, Actio
   */
 static int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Action value_action)
 {
-	  pFunction JumpToApplication;
-		uint32_t JumpAddress = 0;
-	
 		if(item_action != NoAction)
 		{
 			return 1; // return to the settings menu window
@@ -1152,12 +1149,9 @@ static int UpdateFirmwareWindow(pWindow wnd, pData data,Action item_action, Acti
 			USBD_Stop(&hUsbDeviceFS);
 			USBD_DeInit(&hUsbDeviceFS);
 			
-			JumpAddress = *(__IO uint32_t*) (USBD_DFU_BOOT_DEFAULT_ADD + 4);
-			JumpToApplication = (pFunction) JumpAddress;
-			
-			/* Initialize user application's Stack Pointer */
-			__set_MSP(*(__IO uint32_t*) USBD_DFU_BOOT_DEFAULT_ADD);
-			JumpToApplication();
+			// reset DFU signature and enter into bootloader
+			RLCDEV_ResetDfuSignature();
+			NVIC_SystemReset();
 		}
 		else
 		{

@@ -5,11 +5,10 @@
 
 //#define USE_INTERNAL_ADC 1
 
-#define USBD_DFU_BOOT_DEFAULT_ADD 0x0800B000
 #define FIRMWARE_VERSION_STR			"1.1"
-#define RELEASE_DATE_STR					"10.11.24"
-
-typedef  void (*pFunction)(void);
+#define RELEASE_DATE_STR					"14.11.24"
+#define DFU_SIGNATURE							0x3DC23DC2
+#define DFU_SIGNATURE_ADDRESS			0x0800F800
 
 typedef struct
 {
@@ -29,6 +28,7 @@ void RLCDEV_EnableUSB_PullUp(uint8_t);
 void RLCDEV_PowerCtrl(uint8_t);
 void RLCDEV_BacklightCtrl(uint8_t is_enabled);
 void RLCDEV_GetBatteryParameters(pData, uint8_t*);
+void RLCDEV_ResetDfuSignature(void);
 
 void RLCDEV_StartADCRegularConv(void);
 void RLCDEV_StopADCRegularConv(void);
