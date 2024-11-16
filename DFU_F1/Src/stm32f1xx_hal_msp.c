@@ -45,7 +45,7 @@
 void HAL_MspInit(void)
 {
   /* USER CODE BEGIN MspInit 0 */
-
+	__HAL_RCC_AFIO_CLK_ENABLE();
   /* USER CODE END MspInit 0 */
 
   HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
@@ -56,7 +56,7 @@ void HAL_MspInit(void)
 
     /**DISABLE: JTAG-DP Disabled and SW-DP Disabled 
     */
-  __HAL_AFIO_REMAP_SWJ_DISABLE();
+  __HAL_AFIO_REMAP_SWJ_NOJTAG();
 
   /* USER CODE BEGIN MspInit 1 */
 

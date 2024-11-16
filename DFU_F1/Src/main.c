@@ -53,9 +53,13 @@ extern FontInfo font6x8;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void SPI_Init(void);
 
 /* USER CODE BEGIN PFP */
+typedef  void (*pFunction)(void);
 
+void RLCDEV_PowerCtrl(uint8_t);
+void RLCDEV_EnableUSB_PullUp(uint8_t state);
 /* USER CODE END PFP */
 
 /* USER CODE BEGIN 0 */
@@ -64,10 +68,10 @@ static void MX_GPIO_Init(void);
 
 int main(void)
 {
-	SCB->VTOR = FLASH_BASE|0xB000;// vector table offset (use DFU bootloader)
   /* USER CODE BEGIN 1 */
-  //pFunction JumpToApplication;
-  //uint32_t JumpAddress;
+  pFunction JumpToApplication;
+  uint32_t JumpAddress;
+	
 	String str1 = {0,12,AlignCenter,font6x8,"Режим DFU", NotInverted};
 	String str2 = {0,21,AlignCenter,font6x8,"Обновление ПО", NotInverted};
 	uint8_t pwr_index = 0;
@@ -83,21 +87,44 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+	
+	// enable RLC power
+	HAL_Delay(100);
+	RLCDEV_PowerCtrl(1);
+	
+	// checking is corresponding DFU signature is wrote
+	if ((*(__IO uint32_t*)(DFU_SIGNATURE_ADDRESS)) == DFU_SIGNATURE)
+	{
+		// Test if user code is programmed starting from address 0x08004000
+		if (((*(__IO uint32_t*)USBD_DFU_APP_DEFAULT_ADD) & 0x2FFE0000) == 0x20000000)
+		{
+			JumpAddress = *(__IO uint32_t*) (USBD_DFU_APP_DEFAULT_ADD + 4);
+			JumpToApplication = (pFunction) JumpAddress;
 
+			// Initialize user application's Stack Pointer
+			__set_MSP(*(__IO uint32_t*) USBD_DFU_APP_DEFAULT_ADD);
+			JumpToApplication();
+		}
+	}	
 
   /* USER CODE BEGIN 2 */	
-	GPIOB->ODR &= 0xFDFF;// // pull_up D+ disable
+	// init USB
+	RLCDEV_EnableUSB_PullUp(0); // pull_up D+ disable
 	HAL_Delay(1);
-	GPIOB->ODR |= 0x0200;// pull_up D+ enable
+	RLCDEV_EnableUSB_PullUp(1); // pull_up D+ enable
 	
 	MX_USB_DEVICE_Init();
-
-	Display_Clear(); 
 	
+	// init display
+	SPI_Init();
+	Display_Init();
+
+	// show message on display
 	SetStringInBuffer(&str1);
 	SetStringInBuffer(&str2);
-	Write_Buffer();
-	Clear_Buffer();
+	
+	Display_Write_Buffer();
+	Display_Clear_Buffer();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -107,23 +134,23 @@ int main(void)
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
-
+		// check power button state
+		if(!(GPIOA->IDR & GPIO_PIN_9))
+		{
+			if(pwr_index++ >= 20)
+			{
+				GPIOB->ODR &= ~GPIO_PIN_7;
+				RLCDEV_PowerCtrl(0);
+				HAL_PWR_EnterSTANDBYMode();
+				while(1){}
+			}
+		}
+		else
+		{
+			pwr_index = 0;
+		}
 		
-//		if(!(GPIOA->IDR & GPIO_PIN_9))
-//		{
-//			if(pwr_index++ >= 10)
-//			{
-//				GPIOA->ODR &= ~GPIO_PIN_8; //power off
-//				HAL_PWR_EnterSTANDBYMode();
-//				while(1){}
-//			}
-//		}
-//		else
-//		{
-//			pwr_index = 0;
-//		}
-//		
-//		HAL_Delay(100);
+		HAL_Delay(100);
   }
   /* USER CODE END 3 */
 
@@ -178,9 +205,67 @@ void MX_GPIO_Init(void)
   /* GPIO Ports Clock Enable */
 	GPIOA->CRH &= 0xFFFFFF00;
 	GPIOA->CRH |= 0x00000042;
-	/* USB pull-up pin init*/
+	/* USB pull-up and display backlight control pins init*/
+	GPIOB->CRL &= 0x0FFFFFFF;
+	GPIOB->CRL |= 0x20000000;
 	GPIOB->CRH &= 0xFFFFFF0F;
 	GPIOB->CRH |= 0x00000020;
+	
+	// enable display backlight
+	GPIOB->ODR |= GPIO_PIN_7;
+}
+
+static void SPI_Init()
+{
+	// SPI1 init (LCD)
+	RCC->APB2ENR |= RCC_APB2ENR_IOPAEN|RCC_APB2ENR_IOPBEN;
+	RCC->APB2ENR |= RCC_APB2ENR_SPI1EN;
+	 
+	/* SPI SCK, MOSI and DC, RST, CS0 GPIO pin configuration  */
+	AFIO->MAPR |= AFIO_MAPR_SPI1_REMAP;
+	
+	GPIOA->CRH &= 0x0FFFFFFF;
+	GPIOA->CRH |= 0x20000000;
+
+	GPIOB->CRL &= 0xF0000FFF;
+	GPIOB->CRL |= 0x02B2B000;
+	
+	GPIOA->BSRR = GPIO_PIN_15; // set CS signal to 1
+	
+	//SPI init 
+	SPI1->CR1 |= SPI_CR1_BR_2|SPI_CR1_BR_1; // fpclk/4
+	SPI1->CR1 |= SPI_CR1_BIDIMODE|SPI_CR1_BIDIOE|SPI_CR1_SSM; // 8-bit
+	SPI1->CR1 |= SPI_CR1_SSI;
+	SPI1->CR1 |= SPI_CR1_MSTR; // spi master 
+	SPI1->CR1 |= SPI_CR1_SPE;
+}
+
+/**
+  * @brief  RLC device power control
+	* @param  state: 0 - power is disabled, 1 - power is enabled
+  * @retval None
+  */
+void RLCDEV_PowerCtrl(uint8_t state)
+{
+	(state)?(GPIOA->ODR |= 0x0100):(GPIOA->ODR &= 0xFEFF);
+}
+
+/**
+  * @brief  RLC device USB 1.5kOhm pull-up control
+	* @param  state: 0 - pull-up is disabled, 1 - pull-up is enabled
+  * @retval None
+  */
+void RLCDEV_EnableUSB_PullUp(uint8_t state) // 0 - Disable, 1 - Enable
+{
+	if(state)
+	{
+		GPIOB->CRH |= 0x00000020; // set PB9 to output
+		GPIOB->ODR |= 0x0200; // pull-up to 1
+	}
+	else
+	{
+		GPIOB->CRH &= 0xFFFFFF0F; // set PB9 to input (pull-up will be float)
+	}
 }
 /* USER CODE END 4 */
 

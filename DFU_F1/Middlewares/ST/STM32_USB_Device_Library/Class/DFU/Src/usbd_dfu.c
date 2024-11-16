@@ -1082,6 +1082,12 @@ void DFU_Leave(USBD_HandleTypeDef *pdev)
     /* DeInitilialize the MAL(Media Access Layer) */
     ((USBD_DFU_MediaTypeDef *)pdev->pUserData)->DeInit();
 		
+		// restore DFU signature in main firmware if no DFU operations were made
+		if(*(__IO uint32_t*)(DFU_SIGNATURE_ADDRESS) == 0xFFFFFFFF)
+		{
+			HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, (uint32_t)(DFU_SIGNATURE_ADDRESS), DFU_SIGNATURE);
+		}
+		
     GPIOB->CRH &= 0xFFFFFF0F; // set PB9 to input (pull-up will be float)
     /* Generate system reset to allow jumping to the user code */
     NVIC_SystemReset();

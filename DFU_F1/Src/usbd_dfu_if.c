@@ -36,7 +36,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_dfu_if.h"
 
-#define FLASH_DESC_STR      "@Internal Flash   /0x08000000/40*01Kg,24*01Ka,64*01Kg"
+#define FLASH_DESC_STR      "@Internal Flash   /0x08000000/16*01Ka,47*01Kg,1*01Ka"
 #define FLASH_ERASE_TIME    (uint16_t)50
 #define FLASH_PROGRAM_TIME  (uint16_t)50
 
@@ -97,7 +97,7 @@ uint16_t MEM_If_Init_FS(void)
 uint16_t MEM_If_DeInit_FS(void)
 { 
   /* USER CODE BEGIN 1 */ 
-	  HAL_FLASH_Lock();
+	HAL_FLASH_Lock();
   return (USBD_OK);
   /* USER CODE END 1 */ 
 }
