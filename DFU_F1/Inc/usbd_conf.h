@@ -75,9 +75,12 @@
 /*---------- -----------*/
 #define USBD_DFU_XFER_SIZE     1024
 /*---------- -----------*/
-#define USBD_DFU_APP_DEFAULT_ADD     0x08000000
+#define USBD_DFU_APP_DEFAULT_ADD     0x08004000
 /*---------- -----------*/
 #define USBD_DFU_APP_END_ADD                   0x08009FFF
+
+#define DFU_SIGNATURE							0x3DC23DC2
+#define DFU_SIGNATURE_ADDRESS			0x0800F800
 /****************************************/
 /* #define for FS and HS identification */
 #define DEVICE_FS 		0
