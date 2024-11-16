@@ -17,7 +17,6 @@
 *.axf
 *.htm
 *.lnp
-*.sct
 *.dep
 *.uvguix*
 *.uvoptx
@@ -37,3 +36,6 @@ MDK-ARM/Listings
 *.iex
 *.dbgconf
 MDK-ARM/RLC-3/rlc.dfu
+DFU_F1/MDK-ARM/DFU_F1 Configuration/DFU_F1 Configuration.sct
+MDK-ARM/RLC-3/RLC-3.sct
+Middlewares/MDK-ARM/RLC-3/RLC-3.sct
